@@ -1,0 +1,21 @@
+{
+  "name": "hegemony",
+  "version": "1.0.0",
+  "private": true,
+  "description": "패권 — 위임형 현대 국가 경영·실시간 전략 시뮬레이션 (Node.js + Socket.IO)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "test": "node test/game.test.js && node test/room.test.js",
+    "balance": "node test/balance.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "compression": "^1.8.1",
+    "express": "^4.19.2",
+    "socket.io": "^4.7.5"
+  }
+}

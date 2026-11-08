@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "hegemony",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["server.js"],
+      "port": 7870,
+      "autoPort": true
+    }
+  ]
+}

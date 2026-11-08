@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+  <meta name="theme-color" content="#0b1020" />
+  <title>패권 — 위임형 현대 국가 전략</title>
+  <link rel="stylesheet" href="css/style.css?v=1" />
+</head>
+<body>
+
+<!-- ============================================== 입장 -->
+<section id="screen-join" class="screen">
+  <div class="bg-grid"></div>
+  <div class="card join-card">
+    <div class="brand">
+      <div class="brand-mark"></div>
+      <h1>패권<span>HEGEMONY</span></h1>
+    </div>
+    <p class="sub">돈을 어디에 쓸지 비율만 정하세요. 장관들이 공장을 짓고, 기술을 연구하고, 군대를 움직입니다.<br/>실시간으로 영토를 뺏고 빼앗기는 현대 국가 경영·전략 시뮬레이션.</p>
+    <label>지도자 이름<input id="join-name" maxlength="16" placeholder="예: 리더" /></label>
+    <label>방 코드<input id="join-room" maxlength="24" placeholder="예: friends" /></label>
+    <button id="join-btn" class="primary">입장하기</button>
+    <p id="join-error" class="error"></p>
+    <details class="rules">
+      <summary>게임 방법 (1분 요약)</summary>
+      <ul>
+        <li><b>예산</b>: 수입을 산업·연구·국방·금융·비축 비율로 나누면 각 부처 금고에 쌓이고, 장관이 자동으로 씁니다.</li>
+        <li><b>산업부</b>는 도시 부지에 광산·시추소·농장·공장·연구소·병영·벙커·방공포대를 짓습니다. 공장은 철강·원유를 먹고 공산품을 만들어 시장에 팝니다.</li>
+        <li><b>과학부</b>는 기술 트리를 연구합니다. 기계화→기갑, 항공공학→항공전대, 해군 공학→항구·구축함대처럼 병종이 해금되고 티어가 오릅니다. 목표 기술을 찍으면 경로를 따라갑니다.</li>
+        <li><b>해군</b>은 항구가 있는 해안 도시에서 편성되어 바다로만 다니며, 사거리 3 함포로 해안 도시와 지상군을 포격합니다. 보병·기갑은 함대를 못 때리고 포병·항공만 상대할 수 있습니다. 항공전대는 지형을 무시하고 지상군의 6배 속도로 날아갑니다.</li>
+        <li><b>국방부</b>는 적 구성에 맞춰 부대를 편성하고, 교리 비율(수비/확장/공격)에 따라 임무를 줍니다. 부대는 유지비가 들고(대군일수록 부대당 유지비 증가) 지나간 땅을 칠합니다. 공격 부대는 3기 이상 모여야 진격하며, 도시는 민병대·벙커로 버티다가 체력 0 + 지상군 9초 점거면 넘어갑니다.</li>
+        <li><b>외교</b>: 모든 국가는 기본 적대입니다. 불가침(4분, 만료 시 적대 복귀)·동맹(무기한, 서로의 도시를 함께 수비)을 제안하고, 조공으로 신뢰를 올립니다. 조약을 깨면 신뢰가 크게 떨어지고 제3국도 당신을 덜 믿게 됩니다. 적대국이 아니면 공격 대상으로 지정할 수 없습니다.</li>
+        <li><b>재무부</b>는 5개 글로벌 종목에 포트폴리오 비중대로 투자합니다. 방산은 전쟁이 격렬할수록, 에너지는 원유값이 오를수록 오릅니다.</li>
+        <li><b>전쟁은 비쌉니다</b>: 부대를 잃거나 격멸할수록 <b>전쟁 피로도</b>가 쌓여 세수가 최대 절반으로 줄고 인구가 멈춥니다. 점령한 도시는 150초 동안 저항(수입 0)하고, 정복할 때마다 모든 국가의 신뢰가 떨어집니다. 반대로 불가침·동맹국 하나당 세수 +4~8% <b>교역 보너스</b>가 붙습니다. 처음 4분은 보호 기간(점령 불가).</li>
+        <li><b>승리</b>: 대기실에서 선택 — 시간 종료 국력 1위 / 최후 생존 / 경제(국력 5만 선착). 도시를 전부 잃으면 멸망(관전).</li>
+      </ul>
+    </details>
+  </div>
+</section>
+
+<!-- ============================================== 대기실 -->
+<section id="screen-lobby" class="screen hidden">
+  <div class="bg-grid"></div>
+  <div class="card lobby-card">
+    <h2>대기실 <span id="lobby-room-code" class="room-code"></span></h2>
+    <ul id="lobby-players" class="lobby-players"></ul>
+    <div id="lobby-voice" class="voice-box"></div>
+    <div id="lobby-settings" class="lobby-settings"></div>
+    <div class="lobby-actions" id="lobby-bot-actions">
+      <button id="lobby-add-bot">🤖 컴퓨터 추가</button>
+      <button id="lobby-remove-bot">컴퓨터 빼기</button>
+    </div>
+    <div class="lobby-actions">
+      <button id="lobby-start" class="primary">게임 시작</button>
+      <button id="lobby-leave">나가기</button>
+    </div>
+    <p id="lobby-hint" class="hint"></p>
+  </div>
+</section>
+
+<!-- ============================================== 게임 -->
+<section id="screen-game" class="screen hidden">
+  <canvas id="map"></canvas>
+
+  <header id="topbar">
+    <div class="tb-nation"><span id="tb-flag" class="flag"></span><span id="tb-title"></span></div>
+    <div class="tb-stats">
+      <div class="stat" title="현금 / 초당 순수입"><span class="k">💰</span><b id="tb-cash">0</b><i id="tb-net"></i></div>
+      <div class="stat" title="과학 포인트 / 초당"><span class="k">🔬</span><b id="tb-sci">0</b><i id="tb-scirate"></i></div>
+      <div class="stat mats" title="철강 · 원유 · 곡물"><span id="tb-mats"></span></div>
+      <div class="stat" title="부대 / 도시 / 영토"><span class="k">⚔</span><b id="tb-mil"></b></div>
+    </div>
+    <div class="tb-right">
+      <div id="tb-event" class="event hidden"></div>
+      <div id="tb-time" class="time"></div>
+      <div id="tb-speed" class="speed">
+        <button data-speed="0" title="일시정지">⏸</button>
+        <button data-speed="1" class="active">1×</button>
+        <button data-speed="2">2×</button>
+        <button data-speed="3">3×</button>
+      </div>
+      <button id="tb-voice" class="icon-btn" title="음성 채팅">🎙</button>
+      <button id="tb-panel" class="icon-btn" title="패널 열기/닫기">☰</button>
+    </div>
+    <div id="time-bar"><div id="time-fill"></div></div>
+  </header>
+
+  <aside id="side">
+    <nav id="tabs">
+      <button data-tab="policy" class="tab active">국정</button>
+      <button data-tab="industry" class="tab">산업</button>
+      <button data-tab="tech" class="tab">과학</button>
+      <button data-tab="finance" class="tab">금융</button>
+      <button data-tab="army" class="tab">군사</button>
+      <button data-tab="dip" class="tab">외교<span id="dip-badge" class="badge hidden"></span></button>
+      <button data-tab="rank" class="tab">순위</button>
+      <button data-tab="log" class="tab">기록</button>
+    </nav>
+    <div id="tab-policy" class="tab-body"></div>
+    <div id="tab-industry" class="tab-body hidden"></div>
+    <div id="tab-tech" class="tab-body hidden"></div>
+    <div id="tab-finance" class="tab-body hidden"></div>
+    <div id="tab-army" class="tab-body hidden"></div>
+    <div id="tab-dip" class="tab-body hidden"></div>
+    <div id="tab-rank" class="tab-body hidden"></div>
+    <div id="tab-log" class="tab-body hidden">
+      <div id="log-list"></div>
+      <form id="chat-form">
+        <input id="chat-input" maxlength="200" placeholder="채팅..." autocomplete="off" />
+        <button type="submit">전송</button>
+      </form>
+    </div>
+  </aside>
+
+  <div id="selection" class="hidden"></div>
+  <div id="news" class="hidden"></div>
+  <div id="alert" class="hidden"></div>
+  <div id="decision" class="hidden"></div>
+  <div id="spectate" class="hidden">👁 관전 중 — 국가가 멸망했습니다. 지도와 순위는 계속 볼 수 있습니다.</div>
+  <canvas id="minimap"></canvas>
+  <div id="hint" class="hint-bar">도시·부대 클릭으로 정보 보기 · 드래그로 이동 · 휠/핀치로 확대 · 내 부대 선택 후 우클릭(길게 누르기)으로 직접 명령</div>
+  <div id="toast" class="hidden"></div>
+
+  <div id="voice-modal" class="overlay hidden">
+    <div class="card modal-card">
+      <h2>음성 채팅</h2>
+      <div id="game-voice" class="voice-box"></div>
+      <p class="hint">서버를 거치지 않는 P2P(WebRTC) 통화입니다. 마이크는 https 또는 localhost 에서만 열립니다.</p>
+      <div class="lobby-actions"><button id="voice-close">닫기</button></div>
+    </div>
+  </div>
+
+  <div id="result-overlay" class="overlay hidden">
+    <div class="card result-card">
+      <h2>🏆 최종 순위 <span id="result-reason" class="muted small"></span></h2>
+      <canvas id="result-chart" style="width:100%;height:160px;display:block;margin:4px 0 10px"></canvas>
+      <ol id="result-list"></ol>
+      <div class="lobby-actions">
+        <button id="result-restart" class="primary">다시 하기</button>
+        <button id="result-close">닫기</button>
+      </div>
+      <p id="result-hint" class="hint"></p>
+    </div>
+  </div>
+</section>
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="js/client.js?v=1"></script>
+<script src="js/icons.js?v=1"></script>
+<script src="js/renderer.js?v=1"></script>
+<script src="js/input.js?v=1"></script>
+<script src="js/voice.js?v=1"></script>
+<script src="js/ui.js?v=1"></script>
+</body>
+</html>
