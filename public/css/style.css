@@ -208,7 +208,7 @@ button.danger { border-color: rgba(248,113,113,0.6); color: #fca5a5; background:
 
 @media (max-width: 900px) {
   #side { width: min(92vw, 360px); top: 54px; }
-  .tb-stats { display: none; }
+  .tb-stats .stat:not(:first-child) { display: none; } /* 좁은 화면에서도 현금은 보인다 */
   .hint-bar { display: none; }
   #selection { width: min(300px, 70vw); bottom: 120px; }
   #minimap { width: 160px; height: 96px; }
@@ -250,3 +250,53 @@ button.vote.active { border-color: var(--accent); color: var(--accent); }
 .ach.locked { opacity: .25; filter: grayscale(1); }
 .spy-row { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 6px; }
 .spy-row button { font-size: 11px; padding: 4px 8px; }
+
+/* ================================================================ 휴대폰 (세로 600px 이하 / 가로 높이 500px 이하)
+   상단바: 국기·현금·시간·배속·🎙·☰ 한 줄 + 사건 배지는 둘째 줄. 상단바 높이는 JS 가 --tbh 로 알려 준다.
+   사이드 패널: 지도가 위에 보이는 아래쪽 시트. 선택 카드는 상단바 아래로. 시트가 열리면 미니맵은 숨긴다. */
+:root { --tbh: 52px; }
+@media (max-width: 600px) {
+  #topbar { height: auto; min-height: 46px; flex-wrap: wrap; gap: 4px 6px; padding: 5px 8px 6px; padding-top: max(5px, env(safe-area-inset-top)); }
+  .tb-nation { gap: 5px; min-width: 0; flex: 0 1 auto; }
+  #tb-title { display: none; }
+  .tb-stats { display: flex; flex: 0 1 auto; gap: 6px; }
+  .tb-stats .stat:not(:first-child) { display: none; }
+  .stat { font-size: 13px; }
+  .stat i { display: none; }
+  .tb-right { display: contents; }
+  #tb-time { margin-left: auto; font-size: 13px; }
+  .speed button { padding: 5px 7px; font-size: 11px; }
+  .icon-btn { padding: 5px 8px; font-size: 14px; }
+  #tb-panel.on { border-color: var(--accent); color: var(--accent); background: rgba(94,234,212,0.12); }
+  #tb-event { order: 99; flex: 1 0 100%; font-size: 11px; padding: 3px 9px; overflow: hidden; text-overflow: ellipsis; text-align: center; }
+
+  #side { top: auto; left: 0; right: 0; bottom: 0; width: auto; height: 60vh; border-radius: 16px 16px 0 0; padding-bottom: env(safe-area-inset-bottom); }
+  @supports (height: 1dvh) { #side { height: 60dvh; } }
+  #side.collapsed { transform: translateY(105%); }
+  #tabs { overflow-x: auto; scrollbar-width: none; }
+  #tabs::-webkit-scrollbar { display: none; }
+  #tabs .tab { flex: 1 0 auto; padding: 11px 7px; font-size: 12.5px; }
+  .tab-body { padding: 10px 12px 24px; }
+  #side:not(.collapsed) ~ #minimap { display: none; }
+
+  #selection { left: 8px; right: 8px; width: auto; top: calc(var(--tbh) + 8px); bottom: auto; max-height: 30vh; }
+  #minimap { width: 132px; height: 80px; left: 8px; bottom: max(8px, env(safe-area-inset-bottom)); }
+  #news { top: calc(var(--tbh) + 6px); max-width: 94vw; font-size: 11px; }
+  #alert, #toast { top: calc(var(--tbh) + 8px); }
+  #spectate { top: calc(var(--tbh) + 6px); max-width: 94vw; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #decision { max-height: 86vh; overflow-y: auto; padding: 14px; }
+
+  /* 손가락으로 누르기 쉽게 */
+  .chip { padding: 6px 11px; }
+  .slider input[type=range] { height: 28px; }
+  .slider input[type=range]::-webkit-slider-thumb { width: 22px; height: 22px; margin-top: -8px; }
+  table.tbl { font-size: 11px; }
+  .modal-card, .result-card { width: 94vw; max-height: 86vh; overflow-y: auto; padding: 18px 16px; }
+}
+/* 가로로 눕힌 휴대폰: 높이가 낮다 */
+@media (max-height: 500px) and (min-width: 601px) {
+  #side { top: calc(var(--tbh) + 4px); bottom: 4px; }
+  #selection { bottom: 8px; left: 180px; max-height: 60vh; }
+  #minimap { width: 150px; height: 90px; }
+  #decision { max-height: 92vh; overflow-y: auto; }
+}

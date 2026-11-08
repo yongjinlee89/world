@@ -167,8 +167,12 @@ function renderTopbar(g) {
 $('#tb-speed').addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) HG.emit('setSpeed', { speed: Number(b.dataset.speed) }); });
 $('#tb-voice').onclick = () => { $('#voice-modal').classList.remove('hidden'); HG.renderVoice(); };
 $('#voice-close').onclick = () => $('#voice-modal').classList.add('hidden');
-$('#tb-panel').onclick = () => $('#side').classList.toggle('collapsed');
+function syncPanelBtn() { $('#tb-panel').classList.toggle('on', !$('#side').classList.contains('collapsed')); }
+$('#tb-panel').onclick = () => { $('#side').classList.toggle('collapsed'); syncPanelBtn(); };
 if (window.innerWidth < 900) $('#side').classList.add('collapsed');
+syncPanelBtn();
+// 상단바 높이(휴대폰에선 사건 배지 때문에 두 줄이 되기도 한다)를 CSS 변수로 — 패널·알림 위치가 따라간다
+if (window.ResizeObserver) new ResizeObserver(() => document.documentElement.style.setProperty('--tbh', $('#topbar').offsetHeight + 'px')).observe($('#topbar'));
 
 /* ---------------------------------------------------------------- 세계 뉴스 / 결단 */
 let lastNewsKey = '';

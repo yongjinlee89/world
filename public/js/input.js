@@ -59,6 +59,7 @@ canvas.addEventListener('touchstart', (e) => {
     clearTimeout(longPressTimer);
   } else if (touches.size === 1) {
     const t = e.changedTouches[0];
+    dragMoved = false;
     dragStart = { x: t.clientX, y: t.clientY, camX: HG.camera.x, camY: HG.camera.y };
     dragMoved = false;
     clearTimeout(longPressTimer);
@@ -91,8 +92,20 @@ canvas.addEventListener('touchend', (e) => {
     if (touches.size === 1 && !dragMoved) handleClick(t.clientX, t.clientY);
     touches.delete(t.identifier);
   }
+  if (touches.size === 1 && pinchStart > 0) {
+    const rest = [...touches.values()][0];
+    dragStart = { x: rest.x, y: rest.y, camX: HG.camera.x, camY: HG.camera.y };
+    dragMoved = true; // 핀치 뒤 손가락을 떼는 건 클릭이 아니다
+  }
   if (touches.size < 2) pinchStart = 0;
+  if (touches.size === 0) dragStart = null;
 }, { passive: false });
+
+// 알림·제스처 등으로 터치가 취소되면 남은 손가락 기록을 비운다 (안 비우면 이후 탭이 전부 무시된다)
+canvas.addEventListener('touchcancel', () => {
+  clearTimeout(longPressTimer);
+  touches.clear(); pinchStart = 0; dragStart = null; dragMoved = false;
+});
 
 // ---- 선택
 function pick(sx, sy) {
