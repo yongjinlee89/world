@@ -89,7 +89,7 @@ function renderLobby() {
   const st = $('#lobby-settings');
   st.innerHTML = '';
   const labels = { startCash: '시작 자금', duration: '제한 시간', mapSize: '지도 크기', victory: '승리 조건' };
-  const fmtV = { startCash: (v) => fmt(v), duration: (v) => Math.round(v / 60) + '분', mapSize: (v) => ['작게', '보통', '크게'][v], victory: (v) => ['시간 종료 국력', '최후 생존', '경제(국력 5만)'][v] };
+  const fmtV = { startCash: (v) => fmt(v), duration: (v) => (v ? Math.round(v / 60) + '분' : '무제한'), mapSize: (v) => ['작게', '보통', '크게'][v], victory: (v) => ['시간 종료 국력', '최후 생존', '경제(국력 5만)'][v] };
   for (const [key, choices] of Object.entries(S.settingChoices)) {
     const row = el('div', 'setting');
     row.appendChild(el('span', 'name', labels[key] || key));
@@ -108,7 +108,7 @@ function renderLobby() {
   const lr = S.lastResult, box = $('#lobby-last');
   if (!lr) { box.classList.add('hidden'); return; }
   box.classList.remove('hidden');
-  box.innerHTML = `<div class="title">🏆 지난 판 최종 순위 <span class="sz">${{ time: '제한 시간 종료', conquest: '최후의 생존', economic: '경제 승리' }[lr.reason] || ''}</span></div>`;
+  box.innerHTML = `<div class="title">🏆 지난 판 최종 순위 <span class="sz">${{ time: '제한 시간 종료', conquest: '최후의 생존', economic: '경제 승리', host: '방장이 종료' }[lr.reason] || ''}</span></div>`;
   const cv = el('canvas'); cv.style.cssText = 'width:100%;height:120px;display:block;margin:4px 0 8px';
   box.appendChild(cv);
   const ol = el('ol', 'last-list');
@@ -154,10 +154,10 @@ function renderTopbar(g) {
     $('#tb-mats').textContent = `철 ${me.mats.iron} · 유 ${me.mats.oil} · 곡 ${me.mats.grain}`;
     $('#tb-mil').textContent = `${me.stats.units} / 🏙 ${me.stats.cities} / ⬛ ${me.stats.tiles}`;
   }
-  const left = g.victory === 'conquest' ? g.t : g.dur - g.t;
-  $('#tb-time').textContent = (g.victory === 'conquest' ? '⏱ ' : '') + mmss(left);
-  $('#tb-time').title = { score: '제한 시간 종료 시 국력 1위', conquest: '최후의 생존 국가 승리 (제한 시간 없음)', economic: `국력 ${fmt(HG.C.RULES.economicVictory)} 선착 또는 시간 종료` }[g.victory] || '';
-  $('#time-fill').style.width = Math.min(100, (g.t / g.dur) * 100) + '%';
+  const countUp = g.victory === 'conquest' || !g.dur; // 정복전·무제한은 경과 시간
+  $('#tb-time').textContent = (countUp ? '⏱ ' : '') + mmss(countUp ? g.t : g.dur - g.t);
+  $('#tb-time').title = (!g.dur ? '시간 무제한 — 방장이 순위 탭에서 끝낼 수 있습니다. ' : '') + ({ score: '제한 시간 종료 시 국력 1위', conquest: '최후의 생존 국가 승리', economic: `국력 ${fmt(HG.C.RULES.economicVictory)} 선착${g.dur ? ' 또는 시간 종료' : ''}` }[g.victory] || '');
+  $('#time-fill').style.width = (g.dur ? Math.min(100, (g.t / g.dur) * 100) : 0) + '%';
   const ev = $('#tb-event');
   const bits = [];
   const grace = HG.C.RULES.graceSeconds - g.t;
@@ -520,9 +520,9 @@ function renderIndustry(g, me) {
   }
 }
 
-// 국가 프로젝트 (불가사의): 세계에 하나뿐. 목표로 정하면 산업부가 산업 금고의 절반까지 매 주기 투입한다.
+// 국가 프로젝트 (불가사의): 세계에 하나뿐. 목표로 정하면 산업 예산 유입분의 40% + 넘치는 산업 금고가 투입된다.
 function renderProjects(box, g, me) {
-  const wrap = ensure(box, 'projects', (n) => { n.innerHTML = '<h4>국가 프로젝트</h4><p class="hint">세계에 하나뿐인 대사업입니다. 목표로 정하면 산업부가 산업 금고의 절반까지 2초마다 투입합니다 — 특별 집행으로 산업 금고를 채우면 빨라집니다. 다른 나라가 먼저 완성하면 투입액의 절반만 돌려받습니다.</p>'; });
+  const wrap = ensure(box, 'projects', (n) => { n.innerHTML = '<h4>국가 프로젝트</h4><p class="hint">세계에 하나뿐인 대사업입니다. 목표로 정하면 산업 예산으로 들어오는 돈의 40%가 프로젝트로 가고(나머지로 공장을 계속 짓습니다), 산업 금고가 넘치면 그 초과분도 들어갑니다 — 특별 집행으로 산업 금고를 채우면 빨라집니다. 다른 나라가 먼저 완성하면 투입액의 절반만 돌려받습니다.</p>'; });
   let list = wrap.querySelector('.plist');
   if (!list) { list = el('div', 'plist'); wrap.appendChild(list); }
   list.innerHTML = '';
@@ -691,7 +691,13 @@ function renderArmy(g, me) {
     if (s.arty >= 30) counters.push('기갑사단', '항공전대');
     threatHtml = `<div class="box" style="margin-top:8px"><div class="title">⚠ 위협 분석<span class="sz">강도 ${me.threat.total.toFixed(1)}</span></div><div class="hint">${parts.join(' · ')}</div><div class="hint">대응 우선: ${[...new Set(counters)].join(', ') || '현 편성 유지'}</div><div class="hint">상성이 안 맞는 부대(예: 항공 상대의 기갑)는 수비에 보내지 않고, 반격 불가 시 방공망 도시로 물러납니다.</div></div>`;
   }
-  head.innerHTML = `<h4>병력 ${mine.length} / ${HG.C.RULES.maxUnitsPerNation}</h4><div class="chips">${HG.C.UNIT_ORDER.map((t) => `<span class="chip" style="border-color:${U[t].tech && !me.techs.includes(U[t].tech) ? 'rgba(255,255,255,0.1)' : me.color}">${U[t].name} ${counts[t]} <span class="muted">T${me.tier[t]}${U[t].tech && !me.techs.includes(U[t].tech) ? ' 🔒' : ''}</span></span>`).join('')}</div>${threatHtml}<p class="hint" style="margin-top:6px">국방 금고 ${fmt(me.pots.military)} · 유지비 합계는 국정 탭 참고. 행을 클릭하면 지도에서 찾고, 선택한 뒤 우클릭(길게 누르기)으로 직접 명령할 수 있습니다.</p>`;
+  // 생산 현황: 공장·병영 규모가 생산 속도를 정한다
+  const R = HG.C.RULES, Q = me.queue || [];
+  const qHtml = Q.length
+    ? Q.map((q, i) => { const secs = Math.ceil((U[q.t].cost * R.prodNeed * q.n * (1 - q.p / 100)) / Math.max(0.1, me.prod)); return `<div class="qrow"><span>${i === 0 ? '🏭' : '⏳'} ${U[q.t].name}${q.n > 1 ? ' ×' + q.n : ''}</span>${i === 0 ? `<div class="bar"><i style="width:${q.p}%;background:${me.color}"></i></div><span class="muted">약 ${secs}초</span>` : '<span class="muted">대기</span>'}</div>`; }).join('')
+    : '<div class="hint">생산 중인 부대가 없습니다. 국방 금고가 차면 국방부가 계약합니다.</div>';
+  const prodHtml = `<div class="box prod"><div class="title">🏭 병력 생산<span class="sz">생산력 ${fmt1(me.prod)}/초 · 대기열 ${Q.length}/${R.prodQueueMax}</span></div>${qHtml}<div class="hint" style="margin-top:4px">생산력 = 기본 ${R.prodBase} + 공장 1단계당 ${R.prodPerFactory} + 병영 1단계당 ${R.prodPerBarracks}. 돈을 먼저 내고, 생산력만큼씩 차례로 나옵니다 (보병 ${Math.round(U.inf.cost * R.prodNeed)} · 기갑 ${Math.round(U.armor.cost * R.prodNeed)} · 항공 ${Math.round(U.air.cost * R.prodNeed)} 포인트).</div></div>`;
+  head.innerHTML = `<h4>병력 ${mine.length} / ${HG.C.RULES.maxUnitsPerNation}</h4><div class="chips">${HG.C.UNIT_ORDER.map((t) => `<span class="chip" style="border-color:${U[t].tech && !me.techs.includes(U[t].tech) ? 'rgba(255,255,255,0.1)' : me.color}">${U[t].name} ${counts[t]} <span class="muted">T${me.tier[t]}${U[t].tech && !me.techs.includes(U[t].tech) ? ' 🔒' : ''}</span></span>`).join('')}</div>${prodHtml}${threatHtml}<p class="hint" style="margin-top:6px">국방 금고 ${fmt(me.pots.military)} · 유지비 합계는 국정 탭 참고. 행을 클릭하면 지도에서 찾고, 선택한 뒤 우클릭(길게 누르기)으로 직접 명령할 수 있습니다.</p>`;
   const list = ensure(box, 'unit-list', () => {});
   list.innerHTML = '';
   const mLabel = { defend: '수비', expand: '확장', attack: '공격', manual: '직접' };
@@ -739,7 +745,12 @@ function renderRank(g, me) {
   });
   tbl.appendChild(tb);
   box.appendChild(tbl);
-  box.appendChild(el('p', 'hint', { score: '승리: 제한 시간 종료 시 국력 1위', conquest: '승리: 최후의 생존 국가', economic: `승리: 국력 ${fmt(HG.C.RULES.economicVictory)} 선착 (또는 시간 종료 시 1위)` }[g.victory] || ''));
+  box.appendChild(el('p', 'hint', ({ score: g.dur ? '승리: 제한 시간 종료 시 국력 1위' : '승리: 시간 무제한 — 방장이 끝낼 때 국력 1위 (또는 최후의 생존)', conquest: '승리: 최후의 생존 국가', economic: `승리: 국력 ${fmt(HG.C.RULES.economicVictory)} 선착${g.dur ? ' (또는 시간 종료 시 1위)' : ''}` }[g.victory] || '')));
+  if (HG.isHost() && !g.ended) {
+    const b = el('button', 'danger', '🏁 지금 순위로 게임 끝내기');
+    b.onclick = () => { if (confirm('지금 국력 순위로 게임을 끝낼까요? 모든 참가자에게 최종 순위가 표시됩니다.')) HG.emit('endGame'); };
+    box.appendChild(b);
+  }
   // 내 업적 현황
   const ab = el('div', 'box');
   const mineSet = new Set(me.ach || []);
@@ -848,7 +859,7 @@ function renderResult(S, g) {
   const ov = $('#result-overlay');
   if (!g.ended || resultDismissed) { ov.classList.add('hidden'); return; }
   ov.classList.remove('hidden');
-  $('#result-reason').textContent = { time: '제한 시간 종료', conquest: '최후의 생존', economic: '경제 승리' }[g.endReason] || '';
+  $('#result-reason').textContent = { time: '제한 시간 종료', conquest: '최후의 생존', economic: '경제 승리', host: '방장이 종료' }[g.endReason] || '';
   const ol = $('#result-list');
   ol.innerHTML = '';
   for (const r of g.ranking || []) {

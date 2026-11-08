@@ -191,6 +191,7 @@ io.on('connection', (socket) => {
   socket.on('removeBot', withRoom((room, pid) => room.removeBot(pid)));
   socket.on('startGame', withRoom((room, pid) => room.start(pid)));
   socket.on('restart', withRoom((room, pid) => room.restart(pid)));
+  socket.on('endGame', withRoom((room, pid) => room.endGame(pid)));
   socket.on('setSpeed', withRoom((room, pid, p) => room.setSpeed(pid, p.speed)));
 
   /* ------------------------------------------------------------ 위임 설정 (게임 행동) */

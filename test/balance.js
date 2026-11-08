@@ -30,7 +30,7 @@ for (let gi = 0; gi < games; gi++) {
   const r = g.ranking;
   const ratio = r[0].score / Math.max(1, r[r.length - 1].score);
   const dead = r.filter((x) => !x.alive).length;
-  const captures = g.log.filter((l) => l.text.includes('점령했습니다')).length;
+  const captures = g.nations.reduce((s, n) => s + n.stats.conquests, 0); // 기록(log)은 최근 120줄만 남아 셀 수 없다
   summary.push({ seed, end: Math.round(g.time), ratio, dead, captures, msPerTick: ms / ticks });
   console.log(`seed ${seed}: 종료 ${Math.round(g.time)}s, 1위/4위 ${ratio.toFixed(1)}x, 멸망 ${dead}, 도시 점령 ${captures}회, ${(ms / ticks).toFixed(2)}ms/tick`);
   console.log(trace.join('\n'));

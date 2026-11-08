@@ -78,4 +78,25 @@ test('빈 방 판정과 로비 복귀', () => {
   assert.strictEqual(r.game, null);
 });
 
+test('무제한 시간: 시간으로 끝나지 않고, 방장이 끝내면 순위가 나오고 대기실에 남는다', () => {
+  const { Room } = require('../src/room');
+  const room = new Room('u', () => {});
+  room.join('h', 'Host', 's1'); room.join('g', 'Guest', 's2'); room.addBot('h');
+  assert.ok(room.updateSettings('h', { duration: 0 }).ok, '무제한 설정');
+  assert.ok(room.start('h').ok);
+  room.stopLoop();
+  assert.strictEqual(room.game.duration, 0);
+  for (const v of ['score', 'conquest']) { room.game.victory = v; room.game.time = 99999; room.game.checkEnd(); assert.ok(!room.game.ended, v + ' 무제한은 시간으로 끝나지 않는다'); }
+  room.game.victory = 'score';
+  assert.ok(!room.endGame('g').ok, '방장만 끝낼 수 있다');
+  assert.ok(room.endGame('h').ok);
+  assert.strictEqual(room.phase, 'ended');
+  assert.strictEqual(room.game.endReason, 'host');
+  assert.strictEqual(room.game.ranking.length, 3);
+  assert.ok(room.restart('h').ok);
+  const s = room.state();
+  assert.strictEqual(s.phase, 'lobby');
+  assert.ok(s.lastResult && s.lastResult.ranking.length === 3 && s.lastResult.reason === 'host', '대기실에 지난 판 순위');
+});
+
 console.log(`${passed} tests passed`);

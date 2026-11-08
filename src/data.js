@@ -57,10 +57,10 @@ const COUNTER = {
 // 도시마다 부지(slots)가 있고, 산업부 장관이 정책 비율에 맞춰 자동으로 짓는다.
 // res 가 있는 건물은 도시 반경 안의 해당 자원 타일 수만큼만 레벨을 올릴 수 있다.
 const BUILDINGS = {
-  mine:     { id: 'mine',     name: '광산',     cost: 300, res: 'iron', cat: 'resource', out: { iron: 0.5 } },
-  oilwell:  { id: 'oilwell',  name: '시추소',   cost: 340, res: 'oil',  cat: 'resource', out: { oil: 0.35 } },
-  farm:     { id: 'farm',     name: '농장',     cost: 240, res: 'farm', cat: 'resource', out: { grain: 0.6 } },
-  factory:  { id: 'factory',  name: '공장',     cost: 420, cat: 'factory', out: { goods: 1.5 }, in: { iron: 0.3, oil: 0.15 } },
+  mine:     { id: 'mine',     name: '광산',     cost: 300, res: 'iron', cat: 'resource', out: { iron: 0.9 } },
+  oilwell:  { id: 'oilwell',  name: '시추소',   cost: 340, res: 'oil',  cat: 'resource', out: { oil: 0.6 } },
+  farm:     { id: 'farm',     name: '농장',     cost: 240, res: 'farm', cat: 'resource', out: { grain: 0.8 } },
+  factory:  { id: 'factory',  name: '공장',     cost: 420, cat: 'factory', out: { goods: 2.6 }, in: { iron: 0.4, oil: 0.2 } },
   lab:      { id: 'lab',      name: '연구소',   cost: 460, cat: 'infra',   science: 1.0 },
   exchange: { id: 'exchange', name: '거래소',   cost: 520, cat: 'infra',   tech: 'finance' },
   barracks: { id: 'barracks', name: '병영',     cost: 360, cat: 'defense' },
@@ -73,14 +73,15 @@ const MAX_BUILDING_LEVEL = 5;
 
 /* ------------------------------------------------------------------ 시장 */
 // 전 세계 공용 자재 시장. 사면 오르고 팔면 내리며 기준가로 되돌아온다.
+// impact: 1단위 체결당 가격 변동 비율. 공산품은 세계 공용 상품이라 여러 나라가 팔아도 값이 덜 무너진다.
 const MATERIALS = {
-  iron:  { id: 'iron',  name: '철강', base: 1.6 },
-  oil:   { id: 'oil',   name: '원유', base: 2.6 },
-  grain: { id: 'grain', name: '곡물', base: 1.0 },
-  goods: { id: 'goods', name: '공산품', base: 2.2 },
+  iron:  { id: 'iron',  name: '철강', base: 1.6, impact: 0.002 },
+  oil:   { id: 'oil',   name: '원유', base: 2.6, impact: 0.002 },
+  grain: { id: 'grain', name: '곡물', base: 1.0, impact: 0.002 },
+  goods: { id: 'goods', name: '공산품', base: 2.2, impact: 0.0005 },
 };
-const MARKET_IMPACT = 0.004; // 1단위 체결당 가격 변동 비율
-const MARKET_REVERT = 0.05; // 초당 기준가로 되돌아가는 비율
+const MARKET_IMPACT = 0.002; // (기본값) 1단위 체결당 가격 변동 비율
+const MARKET_REVERT = 0.08; // 초당 기준가로 되돌아가는 비율
 const STOCKPILE_CAP = 120; // 이 이상 쌓이면 자동으로 시장에 판다
 
 /* ------------------------------------------------------------------ 주식 */
@@ -142,14 +143,14 @@ const TECH_ORDER = Object.keys(TECHS);
 /* ------------------------------------------------------------------ 상수 */
 const RULES = {
   startCash: 3000,
-  tileIncome: 0.045,       // 영토 1타일당 초당 수입
+  tileIncome: 0.045,       // 영토 1타일당 초당 수입 — 기본 세수일 뿐, 돈은 공장·자원이 번다
   popTax: 0.016,           // 인구 1당 초당 세금
   cityMilitia: 1.3,        // 도시 규모 1당 인접 적 지상군에 주는 초당 피해 (수비대 없이도 버티는 힘)
   upkeepScaleFrom: 6,      // 이 부대 수를 넘기면 부대당 유지비가 올라간다 (대군 유지비, 스노우볼 억제)
   upkeepScale: 0.04,       // 초과 1부대당 +4%
   rallySize: 3,            // 공격 임무 지상군은 이만큼 모여야 적 도시로 진격한다
   adminFrom: 10,           // 이 도시 수를 넘기면 도시당 수입 효율이 떨어진다 (행정 비용, 스노우볼 억제) — 도시가 촘촘해져 10개부터
-  adminPenalty: 0.04,      // 초과 도시 1개당 −4% (최저 55%)
+  adminPenalty: 0.05,      // 초과 도시 1개당 세수 −5% (최저 55%)
   captureKeep: 0.4,        // 점령 시 남는 건물 레벨 비율
   reserveMin: 1500,        // 비축(가용 현금) 상한의 최솟값
   reserveSeconds: 60,      // 비축 상한 = 순수입 × 이 초 수 (넘치면 금고로 재배분)
@@ -186,8 +187,14 @@ const RULES = {
   territoryValue: 2,       // 순자산 계산 시 타일당 가치
   cityValue: 600,
   maxUnitsPerNation: 40,
+  // ---- 병력 생산: 돈을 내도 공장 생산력만큼씩 차례로 나온다
+  prodBase: 0.6,           // 공장이 없어도 나오는 기본 생산력(초당 포인트)
+  prodPerFactory: 0.6,     // 공장 1단계당 생산력 (공장 기술 배수 적용)
+  prodPerBarracks: 0.4,    // 병영 1단계당 생산력
+  prodNeed: 0.1,           // 부대 1기에 필요한 생산 포인트 = 모병비 × 이 값 (보병 15, 기갑 36, 항공 52)
+  prodQueueMax: 3,         // 대기열 최대 건수 (넘치는 돈은 국방 금고에 남는다)
   // ---- 재미 요소
-  projectShare: 0.5,       // 산업 금고 중 매 집행 주기에 국가 프로젝트로 보내는 최대 비율
+  projectShare: 0.4,       // 프로젝트 추진 중 산업 예산 유입분 중 프로젝트로 가는 비율 (나머지로 공장을 짓는다)
   projectPrestige: 0.5,    // 완성한 프로젝트 비용 × 이 비율이 국력(위신)에 더해진다
   projectRefund: 0.5,      // 경쟁에서 지면 투입액의 이 비율을 산업 금고로 돌려받는다
   decisionEvery: 140,      // 결단(선택형 사건) 평균 간격(초)

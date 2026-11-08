@@ -17,7 +17,7 @@
 
 const D = require('./data');
 const { generateMap } = require('./map');
-const { findPath } = require('./pathfinding');
+const { findPath, AMPHIBIOUS_COST } = require('./pathfinding');
 const Dip = require('./diplomacy');
 const Decisions = require('./decisions');
 const Council = require('./council');
@@ -52,7 +52,8 @@ function normalizePct(obj, keys, fallback) {
 class Game {
   constructor(playerInfos, settings = {}) {
     this.settings = settings;
-    this.duration = Number(settings.duration) || 1200;
+    // 0 = 무제한. (Number(0) || 1200 처럼 쓰면 무제한이 20분이 된다)
+    this.duration = settings.duration === 0 || settings.duration === '0' ? 0 : (Number(settings.duration) || 1200);
     this.time = 0;
     this.ended = false;
     this.winner = null;
@@ -99,7 +100,7 @@ class Game {
       stockCost: { defense: 0, energy: 0, tech: 0, constr: 0, food: 0 },
       spend: { resource: 0, factory: 0, infra: 0, defense: 0 },
       mult: null,
-      stats: { income: 0, expense: 0, sales: 0, dividend: 0, net: 0, tiles: 0, cities: 0, units: 0, score: 0, science: 0, kills: 0, losses: 0, captures: 0, spies: 0 },
+      stats: { income: 0, expense: 0, sales: 0, dividend: 0, net: 0, tiles: 0, cities: 0, units: 0, score: 0, science: 0, kills: 0, losses: 0, captures: 0, conquests: 0, spies: 0 }, // captures = 병합+점령, conquests = 적 도시 점령
       liquidate: false,
       autoReserve: !!p.isBot, // 사람은 비축을 직접 쓴다. 봇은 넘치면 자동 재배분.
       autoCabinet: false,     // 켜면 봇의 상황 대응(예산·교리·산업 조정)을 사람 국가에도 적용 (외교는 제외)
@@ -110,6 +111,8 @@ class Game {
       decision: null,         // 지도자가 골라야 할 결단 (사람만)
       projectTarget: null,    // 산업 금고로 추진할 국가 프로젝트
       spyReady: 0,            // 다음 첩보 작전 가능 시각
+      queue: [],              // 병력 생산 대기열 [{type, city, mission, count, need, done, cost}]
+      prodRate: 0,            // 초당 생산력 (공장·병영 규모)
       capitalId: null,
       _missionOffset: Math.random() * RULES.missionInterval,
     }));
@@ -467,10 +470,35 @@ class Game {
     return u;
   }
 
+  // 수송선 도해 가능: 해군 공학 + 항구가 있는 도시
+  amphibious(n) {
+    if (!this.hasTech(n, 'naval')) return false;
+    for (const c of this.cities) if (c.owner === n.idx && c.b.port > 0) return true;
+    return false;
+  }
+  isWater(x, y) {
+    return this.inBounds(x, y) && this.map.tiles[y * this.W + x] === 'water';
+  }
+  // 지상군이 이 도시에 갈 수 있는가: 같은 땅덩어리이거나 수송선이 있으면
+  canReach(u, n, c) {
+    if (!u.ground) return true;
+    const L = this.map.land;
+    const a = L[u.ty * this.W + u.tx], b = L[c.y * this.W + c.x];
+    if (a === b && a >= 0) return true;
+    return this.amphibious(n);
+  }
+  // 다른 땅덩어리로 가는 목표는 멀게 친다 (가까운 대륙부터)
+  seaPenalty(u, c) {
+    if (!u.ground) return 0;
+    const L = this.map.land;
+    return L[u.ty * this.W + u.tx] === L[c.y * this.W + c.x] ? 0 : 14;
+  }
+
   setGoal(u, x, y) {
     if (u.goal && u.goal.x === x && u.goal.y === y && u.path) return;
     u.goal = { x, y };
-    u.path = findPath(this.map, { x: u.tx, y: u.ty }, { x, y }, { flying: u.flying, naval: u.naval });
+    const n = this.nations[u.owner];
+    u.path = findPath(this.map, { x: u.tx, y: u.ty }, { x, y }, { flying: u.flying, naval: u.naval, amphibious: u.ground && this.amphibious(n) });
     if (!u.path) { u.goal = null; u.stuck++; }
     else u.stuck = 0;
   }
@@ -619,9 +647,10 @@ class Game {
       let best = null, bestD = Infinity;
       for (const c of this.cities) {
         if (c.owner !== -1) continue;
+        if (!this.canReach(u, n, c)) continue;
         let heading = 0;
         for (const v of this.units.values()) if (v.owner === n.idx && v.targetCity === c.id && v.id !== u.id) heading++;
-        const d = Math.hypot(u.x - c.x, u.y - c.y) + heading * 6;
+        const d = Math.hypot(u.x - c.x, u.y - c.y) + heading * 6 + this.seaPenalty(u, c);
         if (d < bestD) { bestD = d; best = c; }
       }
       target = best;
@@ -631,7 +660,8 @@ class Game {
       let best = null, bestS = Infinity;
       for (const c of this.cities) {
         if (!this.isEnemyCityFor(n, c)) continue;
-        const d = Math.hypot(u.x - c.x, u.y - c.y);
+        if (!this.canReach(u, n, c)) continue;
+        const d = Math.hypot(u.x - c.x, u.y - c.y) + this.seaPenalty(u, c);
         // 그 도시를 지키는 적 구성에 내가 통하지 않으면(기갑으로 함대·항공 수비를 뚫기 등) 다른 목표를 고른다
         const guard = this.threatDetail(c, c.owner);
         const eff = guard.total > 0.3 ? this.effectiveness(u, guard.by) : 1;
@@ -652,6 +682,7 @@ class Game {
         const td = this.threatDetail(c, c.owner);
         const th = td.total;
         if (allied && th < 0.5) continue; // 동맹 도시는 실제로 위협받을 때만 구원한다
+        if (!this.canReach(u, n, c)) continue;
         let defenders = 0;
         for (const v of this.units.values()) if (v.owner === n.idx && v.targetCity === c.id && v.id !== u.id) defenders++;
         const d = Math.hypot(u.x - c.x, u.y - c.y);
@@ -740,7 +771,8 @@ class Game {
     const next = u.path[0];
     const dx = next.x - u.x, dy = next.y - u.y;
     const dist = Math.hypot(dx, dy);
-    const terr = u.flying || u.naval ? 1 : this.terrain(next.x, next.y).moveCost;
+    let terr = u.flying || u.naval ? 1 : this.terrain(next.x, next.y).moveCost;
+    if (!isFinite(terr) && u.ground && this.isWater(next.x, next.y) && this.amphibious(n)) terr = AMPHIBIOUS_COST; // 수송선
     if (!isFinite(terr)) { u.path = null; u.goal = null; return; }
     const speed = (UNITS[u.type].speed * n.mult.speed) / terr * (u.strength < 30 ? 0.8 : 1);
     const step = speed * dt;
@@ -804,9 +836,11 @@ class Game {
       an._fightAt = this.time; dn._fightAt = this.time; // 평화 기념관 등 "교전 중이 아닐 때" 판정용
       const atk = UNITS[u.type].atk * (1 + 0.25 * (an.tier[u.type] - 1)) * (an.mult.atk + this.buff(an, 'atk')) * this.counterMult(u, target);
       let def = UNITS[target.type].def * (1 + 0.25 * (dn.tier[target.type] - 1)) * (dn.mult.def + this.buff(dn, 'def'));
+      if (target.ground && this.isWater(target.tx, target.ty)) def *= 0.5; // 수송선 위에서는 취약하다
+      const atkW = u.ground && this.isWater(u.tx, u.ty) ? 0.5 : 1;   // 수송선 위에서는 제대로 싸우지 못한다
       if (!target.flying) def *= this.terrain(target.tx, target.ty).def;
       else def *= 1 + (dn.mult.airDef - 1);
-      const d = (atk / def) * 6 * (u.strength / 100) * dt;
+      const d = (atk * atkW / def) * 6 * (u.strength / 100) * dt;
       dmg.set(target.id, (dmg.get(target.id) || 0) + d);
       let by = dmgBy.get(target.id);
       if (!by) dmgBy.set(target.id, (by = {}));
@@ -928,6 +962,7 @@ class Game {
     if (prev >= 0) {
       const pn = this.nations[prev];
       this.pushLog(`${n.title}이(가) ${pn.title}의 도시 ${c.name}을(를) 점령했습니다!`, byIdx);
+      n.stats.conquests++;
       // 점령지 저항 + 세계 여론: 정복은 돈이 바로 되지 않고 평판을 깎는다
       c.unrest = RULES.unrestSeconds;
       pn.weariness = Math.min(100, pn.weariness + 8);
@@ -1061,6 +1096,12 @@ class Game {
       // 예산 분배: 흑자분만 각 부처 금고에 쌓인다 (비축 비율은 현금으로 남는다)
       const positive = Math.max(0, net) * dt;
       for (const k of ['industry', 'research', 'military', 'finance']) n.pots[k] += positive * (n.budget[k] / 100);
+      // 국가 프로젝트를 추진 중이면 산업 예산으로 새로 들어온 돈의 일부를 프로젝트에 바로 넣는다 (나머지로 공장을 계속 짓는다)
+      if (n.projectTarget) {
+        const amt = positive * (n.budget.industry / 100) * RULES.projectShare;
+        n.pots.industry -= amt;
+        this.investProject(n, amt);
+      }
       // 적자 상태: 부대가 이탈한다
       if (n.cash < 0) {
         for (const u of this.units.values()) if (u.owner === n.idx) u.strength -= 0.6 * dt;
@@ -1077,13 +1118,13 @@ class Game {
   marketBuy(mat, qty) {
     const mk = this.market[mat];
     const cost = qty * mk.price * (1 + D.STOCK_SPREAD);
-    mk.price *= 1 + D.MARKET_IMPACT * qty;
+    mk.price *= 1 + (MATERIALS[mat].impact || D.MARKET_IMPACT) * qty;
     return cost;
   }
   marketSell(mat, qty) {
     const mk = this.market[mat];
     const rev = qty * mk.price * (1 - D.STOCK_SPREAD);
-    mk.price *= Math.max(0.5, 1 - D.MARKET_IMPACT * qty);
+    mk.price *= Math.max(0.5, 1 - (MATERIALS[mat].impact || D.MARKET_IMPACT) * qty);
     return rev;
   }
   tickMarket(dt) {
@@ -1206,19 +1247,28 @@ class Game {
     n.projectTarget = id;
     return { ok: true };
   }
-  // 산업 장관: 목표 프로젝트에 산업 금고의 일부를 매 주기 투입한다. 비용을 다 채우면 완성 — 세계에 하나뿐이다.
+  // 프로젝트에 돈을 넣는다 (산업 예산 유입분의 일부 + 넘치는 산업 금고). 비용을 다 채우면 완성 — 세계에 하나뿐이다.
+  // 남는 돈(완성·취소)은 산업 금고로 돌려준다.
+  investProject(n, amt) {
+    const id = n.projectTarget;
+    if (!id || amt <= 0) return;
+    const p = this.projects[id];
+    if (p.done || !this.canProject(n, id).ok) { n.projectTarget = null; n.pots.industry += amt; return; }
+    const have = p.prog[n.idx] || 0;
+    const put = Math.min(amt, PROJECTS[id].cost - have);
+    n.cash -= put;
+    n.pots.industry += amt - put;
+    p.prog[n.idx] = have + put;
+    if (p.prog[n.idx] >= PROJECTS[id].cost - 0.01) this.completeProject(n, p);
+  }
+  // 내각 주기: 목표가 유효한지 확인하고, 산업 금고가 쓸 곳 없이 넘치면(부지 포화) 초과분을 프로젝트로
   fundProject(n) {
     const id = n.projectTarget;
     if (!id) return;
     const p = this.projects[id];
-    const P = PROJECTS[id];
     if (p.done || !this.canProject(n, id).ok) { n.projectTarget = null; return; }
-    const have = p.prog[n.idx] || 0;
-    const amt = Math.min(n.pots.industry * RULES.projectShare, n.cash, P.cost - have);
-    if (amt < 1) return;
-    this.spend(n, 'industry', amt);
-    p.prog[n.idx] = have + amt;
-    if (p.prog[n.idx] >= P.cost - 0.01) this.completeProject(n, p);
+    const extra = Math.min(n.pots.industry - 1500, n.cash);
+    if (extra > 1) { n.pots.industry -= extra; this.investProject(n, extra); }
   }
   completeProject(n, p) {
     const P = PROJECTS[p.id];
@@ -1344,7 +1394,6 @@ class Game {
         for (const c of my) {
           if (!this.canBuild(n, c, kind)) continue;
           const cost = this.buildCost(c, kind);
-          if (cost > pot || cost > n.cash) continue;
           let score = -cost / 100;
           if (kind === 'mine') score += 6 - n.mats.iron / 20;
           if (kind === 'oilwell') score += 6 - n.mats.oil / 15;
@@ -1364,7 +1413,10 @@ class Game {
           if (!best || score > best.score) best = { kind, c, cost, score };
         }
       }
-      if (!best) continue;
+      if (!best) continue; // 이 분야엔 지을 게 없다 → 다음 분야
+      // 가장 필요한 분야의 건물 값이 아직 안 모였으면 모일 때까지 기다린다.
+      // (예전엔 다음 분야로 넘어가 값싼 농장·광산만 사서, 공장·연구소·항구를 영영 못 지었다)
+      if (best.cost > pot || best.cost > n.cash) return false;
       this.spend(n, 'industry', best.cost);
       best.c.b[best.kind]++;
       n.spend[cat] += best.cost;
@@ -1477,8 +1529,10 @@ class Game {
 
   // 한 번 편성했으면 true
   ministerMilitary(n) {
+    if (n.queue.length >= RULES.prodQueueMax) return false; // 공장이 소화할 수 있는 만큼만 계약한다
     let count = 0;
     for (const u of this.units.values()) if (u.owner === n.idx) count++;
+    for (const q of n.queue) count += q.count;
     if (count >= RULES.maxUnitsPerNation) return false;
     const type = this.pickUnitType(n);
     const cost = UNITS[type].cost;
@@ -1492,16 +1546,45 @@ class Game {
     const threatened = this.threatOf(city, n.idx) > 0.5;
     const batch = threatened ? 3 : 1;
     if (threatened && !this.canSpend(n, 'military', cost * batch)) return false;
-    const mission = this.pickMission(n);
-    for (let i = 0; i < batch && count + i < RULES.maxUnitsPerNation; i++) {
-      this.spend(n, 'military', cost);
-      const u = this.spawnUnit(n, type, city);
-      u.mission = threatened ? 'defend' : mission;
-      u.nextThink = 0;
-    }
-    this.fx('spawn', city.x, city.y, { c: n.idx });
-    if (!n.isBot) this.pushLog(`국방부: ${city.name}에서 ${UNITS[type].name}${batch > 1 ? ' ×' + batch : ''} 편성 → ${({ defend: '수비', expand: '확장', attack: '공격' })[threatened ? 'defend' : mission]} 임무`, n.idx);
+    const mission = threatened ? 'defend' : this.pickMission(n);
+    const k = Math.min(batch, RULES.maxUnitsPerNation - count);
+    this.spend(n, 'military', cost * k);
+    // 돈은 먼저 내고(계약), 부대는 생산력만큼씩 만들어진다. 묶음 편성은 다 만들어져야 한꺼번에 나온다.
+    n.queue.push({ type, city: city.id, mission, count: k, need: UNITS[type].cost * RULES.prodNeed * k, done: 0, cost: cost * k });
     return true;
+  }
+
+  // 생산력 = 기본 + 공장 규모(공장 기술 배수) + 병영 규모. 저항 중인 도시는 빠진다.
+  prodRate(n) {
+    let f = 0, b = 0;
+    for (const c of this.cities) {
+      if (c.owner !== n.idx || c.unrest > 0) continue;
+      f += c.b.factory; b += c.b.barracks;
+    }
+    return RULES.prodBase + f * RULES.prodPerFactory * n.mult.factory + b * RULES.prodPerBarracks;
+  }
+  tickProduction(dt) {
+    for (const n of this.nations) {
+      if (!n.alive) { n.queue.length = 0; continue; }
+      n.prodRate = this.prodRate(n);
+      const q = n.queue[0];
+      if (!q) continue;
+      q.done += n.prodRate * dt;
+      if (q.done < q.need) continue;
+      n.queue.shift();
+      const def = UNITS[q.type];
+      // 주문한 도시를 잃었으면 다른 병영 도시(함대는 항구)나 수도에서 나온다. 없으면 국방 금고로 환불.
+      let city = this.cityById.get(q.city);
+      const ok = (c) => c && c.owner === n.idx && (def.naval ? c.b.port > 0 : (c.b.barracks > 0 || c.id === n.capitalId));
+      if (!ok(city)) city = this.cities.find(ok) || null;
+      if (!city) { n.pots.military += q.cost; n.cash += q.cost; continue; } // 환불 (계약 때 낸 돈을 돌려준다)
+      for (let i = 0; i < q.count; i++) {
+        const u = this.spawnUnit(n, q.type, city);
+        u.mission = q.mission; u.nextThink = 0;
+      }
+      this.fx('spawn', city.x, city.y, { c: n.idx });
+      if (!n.isBot) this.pushLog(`국방부: ${city.name}에서 ${def.name}${q.count > 1 ? ' ×' + q.count : ''} 생산 완료 → ${({ defend: '수비', expand: '확장', attack: '공격' })[q.mission] || '수비'} 임무`, n.idx);
+    }
   }
 
   ministerFinance(n) {
@@ -1589,6 +1672,7 @@ class Game {
     Dip.tick(this, dt);
     Decisions.tick(this, dt);
     Council.tick(this, dt);
+    this.tickProduction(dt);
     for (const n of this.nations) if (n.buffs.length) n.buffs = n.buffs.filter((b) => b.until > this.time);
     // 피로도 회복 — 평화 기념관의 회복 보너스는 30초 이상 교전이 없을 때만 (전쟁을 편하게 해 주는 장치가 아니다)
     for (const n of this.nations) if (n.weariness > 0) n.weariness = Math.max(0, n.weariness - RULES.wearinessDecay * (1 + (this.time - (n._fightAt || -999) > 30 ? this.projectBonus(n, 'wearinessDecay') : 0)) * dt);
@@ -1643,14 +1727,14 @@ class Game {
     const alive = this.nations.filter((n) => n.alive);
     if (alive.length <= 1) return this.finish('conquest');
     if (this.victory === 'conquest') {
-      if (this.time >= this.duration * 3) this.finish('time'); // 정복전은 제한 시간의 3배까지
+      if (this.duration > 0 && this.time >= this.duration * 3) this.finish('time'); // 정복전은 제한 시간의 3배까지
       return;
     }
     if (this.victory === 'economic' && this.time > 120) {
       const top = alive.find((n) => n.stats.score >= RULES.economicVictory);
       if (top) return this.finish('economic', top);
     }
-    if (this.time >= this.duration) this.finish('time');
+    if (this.duration > 0 && this.time >= this.duration) this.finish('time'); // 무제한이면 시간으로 끝나지 않는다
   }
   finish(reason = 'time', winnerNation = null) {
     this.ended = true;
@@ -1662,7 +1746,7 @@ class Game {
     this.winner = ranked[0].id;
     this.hist.t.push(Math.round(this.time));
     this.hist.s.push(this.nations.map((n) => n.alive ? Math.round(n.stats.score) : 0));
-    const why = { time: '제한 시간 종료', conquest: '최후의 생존', economic: `경제 승리 (국력 ${RULES.economicVictory} 달성)` }[reason] || reason;
+    const why = { time: '제한 시간 종료', conquest: '최후의 생존', economic: `경제 승리 (국력 ${RULES.economicVictory} 달성)`, host: '방장이 종료' }[reason] || reason;
     this.pushLog(`게임 종료 (${why}) — ${ranked[0].title}(${ranked[0].name})의 패권!`, ranked[0].idx);
   }
 
@@ -1685,6 +1769,7 @@ class Game {
           budget: n.budget, doctrine: n.doctrine, attackTarget: n.attackTarget, industry: n.industry, portfolio: n.portfolio, liquidate: n.liquidate, autoReserve: n.autoReserve, autoCabinet: n.autoCabinet,
           weariness: Math.round(n.weariness), nukeReady: Math.round(n.nukeReady), spyReady: Math.round(n.spyReady),
           ach: n.ach, project: n.projectTarget,
+          prod: r1(n.prodRate), queue: n.queue.map((q, i) => ({ t: q.type, n: q.count, p: i === 0 ? Math.min(100, Math.floor((q.done / q.need) * 20) * 5) : 0 })), // 진행률은 5% 단위 — 매초 바뀌는 값을 줄인다
           buffs: n.buffs.map((b) => ({ k: b.k, v: Math.round(b.v * 100), n: b.name, u: Math.round(b.until) })),
           decision: n.decision ? { id: n.decision.id, name: n.decision.name, text: n.decision.text, u: Math.round(this.time + n.decision.left), options: n.decision.options } : null,
           pots: { industry: Math.round(n.pots.industry), research: Math.round(n.pots.research), military: Math.round(n.pots.military), finance: Math.round(n.pots.finance) },

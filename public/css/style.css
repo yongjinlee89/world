@@ -306,3 +306,8 @@ button.vote.active { border-color: var(--accent); color: var(--accent); }
 #lobby-last { margin-top: 12px; }
 #lobby-last .last-list { padding-left: 22px; line-height: 1.8; font-size: 13px; margin: 0; }
 #lobby-last .last-list li b { color: var(--accent); }
+
+/* 병력 생산 대기열 */
+.box.prod { margin-top: 8px; }
+.qrow { display: grid; grid-template-columns: 1fr 90px auto; gap: 8px; align-items: center; font-size: 12px; margin: 4px 0; }
+.qrow .bar { height: 6px; }

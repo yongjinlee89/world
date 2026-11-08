@@ -8,6 +8,7 @@ const { TERRAIN } = require('./data');
  *  - 반복 횟수를 직선 거리에 비례해 제한해서, 못 가는 곳은 ms 안에 포기한다.
  *  - opts.flying 이면 지형 비용을 무시하고(바다 포함) 직진한다.
  *  - opts.naval 이면 바다 타일만 지나간다 (비용 1).
+ *  - opts.amphibious 면 지상군도 바다를 건넌다 (수송선: 바다 칸 비용 2.5, 육지→바다 승선 +10).
  *  - opts.avoid = [{x,y,r,cost}] 위험 지대에 가산 비용을 줘서 우회하게 한다.
  * 반환: 출발지를 뺀 {x,y} 배열(목적지 포함). 경로가 없으면 null.
  */
@@ -27,6 +28,9 @@ function getScratch(N) {
   _scrGen++;
   return _scr;
 }
+
+const AMPHIBIOUS_COST = 2.5; // 수송선으로 바다 1칸
+const EMBARK_COST = 10;      // 승선 (같은 대륙 안에서 만을 가로지르는 지름길로 바다에 나가지 않게)
 
 function heuristic(ax, ay, bx, by) {
   const dx = Math.abs(ax - bx), dy = Math.abs(ay - by);
@@ -87,11 +91,12 @@ function findPath(map, start, goal, opts = {}) {
   heapPush(startKey, heuristic(sx, sy, gx, gy));
 
   const h0 = heuristic(sx, sy, gx, gy);
-  const maxIter = Math.min(N, Math.max(1500, Math.floor(h0 * 90)));
+  const maxIter = Math.min(N, Math.max(opts.amphibious ? 4000 : 1500, Math.floor(h0 * 90)));
   let iter = 0;
   const tiles = map.tiles;
   const flying = !!opts.flying;
   const naval = !!opts.naval;
+  const amphibious = !!opts.amphibious;
   const avoid = opts.avoid;
 
   while (heap.length > 0) {
@@ -129,7 +134,10 @@ function findPath(map, start, goal, opts = {}) {
         const t = TERRAIN[tiles[nKey]];
         if (!t) continue;
         base = t.moveCost;
-        if (!isFinite(base)) continue;
+        if (!isFinite(base)) {
+          if (!amphibious || tiles[nKey] !== 'water') continue;
+          base = AMPHIBIOUS_COST + (tiles[cur.key] !== 'water' ? EMBARK_COST : 0);
+        }
       }
       let stepCost = base * (dx !== 0 && dy !== 0 ? 1.41421 : 1.0);
       if (avoid) {
@@ -151,4 +159,4 @@ function findPath(map, start, goal, opts = {}) {
   return null;
 }
 
-module.exports = { findPath };
+module.exports = { findPath, AMPHIBIOUS_COST };

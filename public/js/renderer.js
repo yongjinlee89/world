@@ -805,6 +805,19 @@ function drawUnits(g, now) {
       gg.addColorStop(0, `rgba(255,140,60,${0.18 + pulse * 0.2})`); gg.addColorStop(1, 'rgba(255,100,40,0)');
       ctx.fillStyle = gg; ctx.beginPath(); ctx.arc(s.x, s.y, z * 1.1, 0, Math.PI * 2); ctx.fill();
     }
+    // 바다를 건너는 지상군: 수송선 선체를 깔고 그 위에 부대를 그린다
+    const tileAtU = g.map.tiles[Math.round(p.y) * g.map.w + Math.round(p.x)];
+    if (!air && u.t !== 'navy' && tileAtU === 'water') {
+      const L = z * (detail ? 1.7 : 1.2), Wd = z * (detail ? 0.42 : 0.3);
+      ctx.save(); ctx.translate(s.x, s.y); ctx.rotate(facing);
+      ctx.strokeStyle = 'rgba(230,245,255,0.45)'; ctx.lineWidth = 1.4;
+      ctx.beginPath(); ctx.moveTo(-L * 0.5, -Wd * 0.7); ctx.lineTo(-L * 1.1, -Wd * 1.6); ctx.moveTo(-L * 0.5, Wd * 0.7); ctx.lineTo(-L * 1.1, Wd * 1.6); ctx.stroke(); // 항적
+      ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.beginPath(); ctx.ellipse(1.5, 2.5, L * 0.55, Wd * 1.05, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(L * 0.55, 0); ctx.quadraticCurveTo(L * 0.35, -Wd, -L * 0.1, -Wd); ctx.lineTo(-L * 0.5, -Wd * 0.85); ctx.lineTo(-L * 0.5, Wd * 0.85); ctx.lineTo(-L * 0.1, Wd); ctx.quadraticCurveTo(L * 0.35, Wd, L * 0.55, 0); ctx.closePath();
+      ctx.fillStyle = '#59626e'; ctx.fill(); ctx.strokeStyle = dark; ctx.lineWidth = 1.2; ctx.stroke();
+      ctx.fillStyle = col; ctx.globalAlpha = 0.55; ctx.fillRect(-L * 0.42, -Wd * 0.45, L * 0.7, Wd * 0.9); ctx.globalAlpha = 1; // 갑판
+      ctx.restore();
+    }
     const badgeSize = detail ? Math.max(12, Math.min(22, z * 0.6)) : Math.max(14, Math.min(36, z * 1.1));
     let badgeY = s.y;
     if (detail) {

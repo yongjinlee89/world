@@ -16,7 +16,7 @@ const BOT_THINK_MS = 6000;
 const DEFAULT_SETTINGS = { startCash: 3000, duration: 1200, mapSize: 1, victory: 0 };
 const SETTING_CHOICES = {
   startCash: [2000, 3000, 5000],
-  duration: [900, 1200, 1800],
+  duration: [900, 1200, 1800, 0], // 0 = 무제한 (방장이 '지금 끝내기'로 종료하거나 정복·경제 승리)
   mapSize: [0, 1, 2], // small / normal / large
   victory: [0, 1, 2], // score(시간 종료 국력) / conquest(최후 생존) / economic(국력 50,000 선착)
 };
@@ -177,11 +177,25 @@ class Room {
       connected.map((p) => ({ id: p.id, name: p.name, isBot: !!p.isBot })),
       { ...this.settings, mapSize: MAP_SIZES[this.settings.mapSize] || 'normal', victory: VICTORIES[this.settings.victory] || 'score' }
     );
-    this.game.pushLog(`게임 시작! 시작 자금 ${this.settings.startCash}, 제한 ${Math.round(this.settings.duration / 60)}분. 예산 비율을 정하면 장관들이 알아서 집행합니다.`);
+    this.game.pushLog(`게임 시작! 시작 자금 ${this.settings.startCash}, ${this.settings.duration ? `제한 ${Math.round(this.settings.duration / 60)}분` : '시간 무제한'}. 예산 비율을 정하면 장관들이 알아서 집행합니다.`);
     // 봇은 시작하자마자 한 번 생각한다
     for (const p of this.players) if (p.isBot) botThink(this.game, p.id);
     this.startLoop();
     this.touch();
+    return { ok: true };
+  }
+
+  // 방장이 지금 국력 순위로 판을 끝낸다 (무제한 게임의 종료 수단, 시간제 게임에서도 가능)
+  endGame(playerId) {
+    if (this.phase !== 'playing' || !this.game) return { ok: false, error: '게임 중이 아닙니다.' };
+    if (playerId !== this.hostId) return { ok: false, error: '방장만 끝낼 수 있습니다.' };
+    this.game.finish('host');
+    this.phase = 'ended';
+    this.saveResult();
+    this.stopLoop();
+    this.touch();
+    this._econFresh = true;
+    this.onChange(this);
     return { ok: true };
   }
 

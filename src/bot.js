@@ -111,6 +111,14 @@ function think(game, nationId, opts = {}) {
   n.portfolio = normalize(w, STOCK_ORDER);
 
   // ---- 연구 목표
+  // 내 대륙에 병합할 중립 도시가 바닥났으면 바다 건너로 가기 위해 해군 공학(수송선·항구)부터
+  if (!game.hasTech(n, 'naval')) {
+    const cap = game.cityById.get(n.capitalId);
+    const L = game.map.land, W = game.W;
+    const home = cap ? L[cap.y * W + cap.x] : -1;
+    const left = game.cities.some((c) => c.owner === -1 && L[c.y * W + c.x] === home);
+    if (!left && t > 120) n.researchTarget = 'naval';
+  }
   if (!n.researchTarget || game.hasTech(n, n.researchTarget)) {
     const coastal = game.cities.some((c) => c.owner === n.idx && game.isCoastal(c));
     const wishlist = P.name === '군국형'

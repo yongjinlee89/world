@@ -60,15 +60,38 @@ function generateMap(width, height, seed, nationCount) {
   const height01 = new Float32Array(width * height);
 
   // --- 고도 -------------------------------------------------------------
-  // 가장자리로 갈수록 낮아지는 마스크로 대륙 하나 + 바다 연안을 만든다.
+  // 대륙을 여러 개로 나눈다: 대륙 중심들 사이의 경계(두 중심까지 거리 차가 작은 곳)를 해협으로 끊는다.
+  // 그래서 다른 대륙으로 가려면 수송선(해군 공학 + 항구)이나 항공이 필요하고, 바다를 지키는 해군이 의미를 갖는다.
+  const area = width * height;
+  const K = nationCount <= 2 || area < 4000 ? 2 : (area > 7000 && nationCount >= 4 ? 4 : 3);
+  const rot = rand() * Math.PI * 2;
+  const centers = [];
+  for (let k = 0; k < K; k++) {
+    const a = rot + (k / K) * Math.PI * 2;
+    const r = K === 2 ? 0.25 : 0.27;
+    centers.push({ x: (0.5 + Math.cos(a) * r) * width, y: (0.5 + Math.sin(a) * r * 0.95) * height });
+  }
+  const warp = makeNoise(rand);
+  const forcedSea = new Uint8Array(width * height);
+  const nearestC = new Uint8Array(width * height); // 칸마다 가장 가까운 대륙 중심
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       const nx = x / width, ny = y / height;
       const e = noise(x * 0.045 + 3.1, y * 0.045 + 7.7, 5, 2.1, 0.5);
       const dx = Math.abs(nx - 0.5) * 2, dy = Math.abs(ny - 0.5) * 2;
       const edge = Math.pow(Math.max(dx, dy), 3.2); // 네 변이 바다
-      let h = e - edge * 0.55;
-      height01[y * width + x] = h;
+      // 해안선이 구불구불하도록 좌표를 노이즈로 비튼 뒤 가장 가까운 두 대륙 중심까지 거리
+      const wx = x + (warp(x * 0.05 + 40, y * 0.05 + 9, 3) - 0.5) * 16;
+      const wy = y + (warp(x * 0.05 + 7, y * 0.05 + 61, 3) - 0.5) * 16;
+      let d1 = Infinity, d2 = Infinity;
+      centers.forEach((c, ci) => {
+        const d = Math.hypot(wx - c.x, wy - c.y);
+        if (d < d1) { d2 = d1; d1 = d; nearestC[y * width + x] = ci; } else if (d < d2) d2 = d;
+      });
+      const gap = d2 - d1; // 대륙 경계에서 0
+      const border = Math.max(0, Math.min(1, 1 - (gap - 2) / 6));
+      if (gap < 2.6) forcedSea[y * width + x] = 1; // 해협은 반드시 바다 (폭 약 3~5칸)
+      height01[y * width + x] = e - edge * 0.55 - border * 0.45;
     }
   }
   // 수면 높이를 조정해 육지가 60~68% 정도 되게 한다
@@ -80,7 +103,7 @@ function generateMap(width, height, seed, nationCount) {
 
   for (let i = 0; i < tiles.length; i++) {
     const h = height01[i];
-    if (h < seaLevel) tiles[i] = 'water';
+    if (h < seaLevel || forcedSea[i]) tiles[i] = 'water';
     else if (h > peakLevel) tiles[i] = 'peak';
     else if (h > mountainLevel) tiles[i] = 'mountain';
     else if (h > hillLevel) tiles[i] = 'hill';
@@ -158,20 +181,28 @@ function generateMap(width, height, seed, nationCount) {
 
   const cities = [];
   const margin = 6;
-  // 수도: 가장자리 타원 위에 균등 각도로 배치 후 가까운 좋은 육지로 스냅
+  // 수도: 대륙마다 돌아가며 배정한다 (국가가 대륙 수보다 많으면 한 대륙에 여럿 — 서로 멀리). 그 대륙의 좋은 육지로 스냅.
   for (let k = 0; k < nationCount; k++) {
-    const ang = (k / nationCount) * Math.PI * 2 + rand() * 0.3 - 0.15 + Math.PI / nationCount;
-    const cx = width / 2 + Math.cos(ang) * (width / 2 - margin - 8);
-    const cy = height / 2 + Math.sin(ang) * (height / 2 - margin - 6);
+    const ci = k % K, slot = Math.floor(k / K);
+    const m = Math.floor((nationCount - 1 - ci) / K) + 1; // 이 대륙에 배정된 국가 수
+    const c0 = centers[ci];
+    // 지도 중심에서 바깥쪽으로 조금 밀어 해협에서 떨어뜨리고, 여럿이면 대륙 안에서 둥글게 벌린다
+    const out = Math.atan2(c0.y - height / 2, c0.x - width / 2);
+    const spread = Math.min(width, height) * 0.21;
+    const ang = out + (m > 1 ? (slot - (m - 1) / 2) * (Math.PI * 0.9 / Math.max(1, m - 1)) * (m > 1 ? 1 : 0) : 0);
+    const cx = c0.x + Math.cos(ang) * (m > 1 ? spread : spread * 0.35);
+    const cy = c0.y + Math.sin(ang) * (m > 1 ? spread : spread * 0.35);
     let best = null, bestS = -Infinity;
-    for (let r = 0; r < 14; r++) {
+    for (let r = 0; r < 18; r++) {
       for (let a = 0; a < 16; a++) {
         const x = Math.round(cx + Math.cos(a / 16 * Math.PI * 2) * r);
         const y = Math.round(cy + Math.sin(a / 16 * Math.PI * 2) * r);
         if (!isLand(x, y)) continue;
         if (x < margin || y < margin || x >= width - margin || y >= height - margin) continue;
-        const s = landScore(x, y) - r * 0.6;
-        if (s > bestS) { bestS = s; best = { x, y }; }
+        if (nearestC[y * width + x] !== ci) continue;
+        if (cities.some((c) => Math.hypot(c.x - x, c.y - y) < 12)) continue;
+        const s2 = landScore(x, y) - r * 0.6;
+        if (s2 > bestS) { bestS = s2; best = { x, y }; }
       }
       if (best && r >= 4) break;
     }
@@ -234,7 +265,7 @@ function generateMap(width, height, seed, nationCount) {
       if (nx2 < 0 || ny2 < 0 || nx2 >= width || ny2 >= height) continue;
       const i = ny2 * width + nx2;
       if (tiles[i] === 'peak' || tiles[i] === 'mountain') tiles[i] = 'hill';
-      if (tiles[i] === 'water') tiles[i] = 'plain';
+      if (tiles[i] === 'water' && !forcedSea[i]) tiles[i] = 'plain';
     }
     tiles[c.y * width + c.x] = 'urban';
     if (c.size >= 2) {
@@ -276,7 +307,25 @@ function generateMap(width, height, seed, nationCount) {
     }
   }
 
-  return { width, height, tiles, resources, cities, prov, roads: roadPaths, rivers: riverPaths, seed };
+  // 땅덩어리 번호 (8방향 연결) — 지상군이 바다를 건너지 않고 갈 수 있는지 판정용
+  const land = new Array(width * height).fill(-1);
+  let landCount = 0;
+  for (let i = 0; i < tiles.length; i++) {
+    if (tiles[i] === 'water' || land[i] >= 0) continue;
+    const stack = [i]; land[i] = landCount;
+    while (stack.length) {
+      const j = stack.pop(), x = j % width, y = (j - x) / width;
+      for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) {
+        const nx2 = x + ox, ny2 = y + oy;
+        if (nx2 < 0 || ny2 < 0 || nx2 >= width || ny2 >= height) continue;
+        const k = ny2 * width + nx2;
+        if (tiles[k] === 'water' || land[k] >= 0) continue;
+        land[k] = landCount; stack.push(k);
+      }
+    }
+    landCount++;
+  }
+  return { width, height, tiles, resources, cities, prov, roads: roadPaths, rivers: riverPaths, land, continents: K, seed };
 }
 
 /**

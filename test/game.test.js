@@ -300,8 +300,20 @@ test('특별 집행·회수: 비축을 금고로 옮기면 장관이 바로 쓰�
   assert.ok(Math.floor(n.cash - earmarked()) <= 0);
   const before = [...g.units.values()].filter((u) => u.owner === n.idx).length;
   g.tickCabinet();
+  assert.ok(n.queue.length > 0, '국방부가 즉시 생산 계약');
+  assert.ok(n.queue.length <= D.RULES.prodQueueMax, '대기열은 상한까지만');
+  assert.strictEqual([...g.units.values()].filter((u) => u.owner === n.idx).length, before, '돈을 내도 바로 나오지 않는다');
+  // 생산력만큼 시간이 지나면 나온다
+  const need = n.queue[0].need;
+  const secs = need / g.prodRate(n);
+  assert.ok(secs >= 3, `생산에 시간이 걸린다 (${secs.toFixed(1)}초)`);
+  for (let t = 0; t < secs + 0.6; t += 0.25) g.tickProduction(0.25);
   const after = [...g.units.values()].filter((u) => u.owner === n.idx).length;
-  assert.ok(after > before, '국방부가 즉시 편성');
+  assert.ok(after > before, '생산 완료 후 편성');
+  // 공장이 많을수록 빠르다
+  const cap = g.cityById.get(n.capitalId);
+  const r0 = g.prodRate(n); cap.b.factory += 3;
+  assert.ok(g.prodRate(n) > r0 * 1.5, '공장 규모만큼 생산력 증가');
   n.pots.research = 0; n.pots.industry = 300;
   assert.ok(g.recall('p0', 'industry').ok);
   assert.strictEqual(n.pots.industry, 0);
@@ -417,9 +429,13 @@ test('국가 프로젝트: 기술이 있어야 목표로 정할 수 있고, 산�
   assert.ok(g.setProject('p0', 'peace').ok, '평화 기념관은 기술 불필요');
   a.cash = 10000; a.pots.industry = 1000;
   b.cash = 10000; b.pots.industry = 1000; b.projectTarget = 'peace';
-  g.tickCabinet();
-  assert.ok((g.projects.peace.prog[a.idx] || 0) > 0 && !g.projects.peace.done, '산업 금고의 절반까지만 투입');
-  assert.ok((g.projects.peace.prog[b.idx] || 0) > 0 || g.projects.peace.done, '경쟁자도 투입');
+  // 산업 예산 유입분의 일부가 프로젝트로 간다 — 산업 금고 잔액은 공장용으로 남는다
+  const potBefore = a.pots.industry;
+  g.tickEconomy(2);
+  assert.ok((g.projects.peace.prog[a.idx] || 0) > 0 && !g.projects.peace.done, '유입분 일부 투입');
+  assert.ok(a.pots.industry >= potBefore * 0.99, '산업 금고를 깎아 먹지 않는다');
+  assert.ok((g.projects.peace.prog[b.idx] || 0) > 0, '경쟁자도 투입');
+  // 산업 금고가 넘치면 초과분이 들어간다
   for (let i = 0; i < 10 && !g.projects.peace.done; i++) { a.pots.industry = 6000; a.cash = 10000; g.tickCabinet(); }
   assert.ok(g.projects.peace.done && g.projects.peace.owner === a.idx, 'p0 이 완성');
   assert.strictEqual(a.projectTarget, null);
@@ -429,8 +445,11 @@ test('국가 프로젝트: 기술이 있어야 목표로 정할 수 있고, 산�
   assert.ok(g.projectBonus(a, 'wearinessDecay') === 2 && g.projectBonus(a, 'trade') === 0.05);
   a.techs.push('massprod'); g.refreshMult(a);
   assert.ok(g.setProject('p0', 'expo').ok);
-  g.updateStats(a);
-  assert.ok(g.netWorth(a) > 10000 + 2500 * 0.5, '위신이 국력에 더해진다');
+  const w1 = g.netWorth(a);
+  g.projects.peace.owner = -1;
+  const w0 = g.netWorth(a);
+  g.projects.peace.owner = a.idx;
+  assert.ok(Math.abs(w1 - w0 - 2500 * D.RULES.projectPrestige) < 1, '위신(비용의 절반)이 국력에 더해진다');
 });
 
 test('세계 의회: 결의안이 상정되고 투표로 가결되면 세계 효과가 걸린다 (휴전은 점령을 막는다)', () => {
