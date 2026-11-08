@@ -88,7 +88,8 @@ class Game {
       pots: { industry: 0, research: 0, military: 0, finance: 0 },
       budget: { ...DEFAULT_BUDGET },
       doctrine: { ...DEFAULT_DOCTRINE },
-      attackTarget: 'any',
+      // 공격 대상: 'none'(공격 안 함) | 'any'(모든 적국) | [국가 idx, ...](고른 나라만). 사람은 공격 안 함이 기본 — 지도자가 정한 나라만 친다
+      attackTarget: p.isBot ? 'any' : 'none',
       industry: { ...DEFAULT_INDUSTRY },
       portfolio: { ...DEFAULT_PORTFOLIO },
       researchTarget: null,
@@ -309,9 +310,15 @@ class Game {
     if (!n || !n.alive) return { ok: false, error: '국가가 없습니다.' };
     n.doctrine = normalizePct(d, ['defend', 'expand', 'attack'], DEFAULT_DOCTRINE);
     if (d && d.target !== undefined) {
-      const t = d.target === 'any' ? 'any' : this.nations.find((x) => x.idx === Number(d.target) && x.id !== pid) ? Number(d.target) : 'any';
-      if (t !== 'any' && !Dip.isHostile(this, n.idx, t)) return { ok: false, error: '적대 관계가 아닌 국가입니다. 외교 탭에서 먼저 적대를 선언하세요.' };
-      n.attackTarget = t;
+      if (d.target === 'any' || d.target === 'none') n.attackTarget = d.target;
+      else {
+        // 숫자 하나 또는 배열 → 고른 나라 목록 (자기 자신·없는 나라·멸망국은 뺀다)
+        const raw = Array.isArray(d.target) ? d.target : [d.target];
+        const list = [...new Set(raw.map(Number))].filter((i) => i !== n.idx && this.nations[i] && this.nations[i].alive);
+        const bad = list.find((i) => !Dip.isHostile(this, n.idx, i));
+        if (bad !== undefined) return { ok: false, error: `${this.nations[bad].title}과(와)는 적대 관계가 아닙니다. 외교 탭에서 먼저 적대를 선언하세요.` };
+        n.attackTarget = list.length ? list : 'none';
+      }
     }
     // 비율이 바뀌었으니 위임 부대를 즉시 재배정한다
     for (const u of this.units.values()) if (u.owner === n.idx && u.mission !== 'manual') u.nextThink = 0;
@@ -513,7 +520,10 @@ class Game {
       total++;
     }
     const hasNeutral = this.cities.some((c) => c.owner === -1);
-    if (n.attackTarget !== 'any' && !(this.nations[n.attackTarget] && this.nations[n.attackTarget].alive)) n.attackTarget = 'any';
+    // 멸망했거나 더는 적대가 아닌 나라는 공격 대상에서 뺀다 (봇의 단일 대상은 '모든 적국'으로)
+    const t = n.attackTarget;
+    if (Array.isArray(t)) { const l = t.filter((i) => this.nations[i] && this.nations[i].alive && Dip.isHostile(this, n.idx, i)); n.attackTarget = l.length ? l : 'none'; }
+    else if (typeof t === 'number' && !(this.nations[t] && this.nations[t].alive)) n.attackTarget = 'any';
     const hasEnemy = this.cities.some((c) => this.isEnemyCityFor(n, c));
     let best = 'defend', bestGap = -Infinity;
     for (const m of ['defend', 'expand', 'attack']) {
@@ -575,8 +585,16 @@ class Game {
     if (c.owner < 0 || c.owner === n.idx) return false;
     if (!this.nations[c.owner].alive) return false;
     if (!Dip.isHostile(this, n.idx, c.owner)) return false;
-    if (n.attackTarget !== 'any' && c.owner !== n.attackTarget) return false;
+    if (!this.targets(n, c.owner)) return false;
     return true;
+  }
+  // 이 나라를 공격 대상으로 삼았는가
+  targets(n, idx) {
+    const t = n.attackTarget;
+    if (t === 'any') return true;
+    if (Array.isArray(t)) return t.includes(idx);
+    if (typeof t === 'number') return t === idx;
+    return false; // 'none'
   }
   hostile(a, b) {
     return Dip.isHostile(this, a, b);

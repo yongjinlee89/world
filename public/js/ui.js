@@ -10,6 +10,7 @@ const { $, el, fmt, fmt1, mmss } = HG;
 const ICONS = window.HG_ICONS;
 
 let activeTab = localStorage.getItem('hg:tab') || 'policy';
+let pendingTarget = null; // 공격 대상 칩: 서버 응답 전 낙관적 값
 let resultDismissed = false;
 let lastThreat = 0, lastAlertAt = 0;
 
@@ -465,23 +466,41 @@ function renderPolicy(g, me) {
     { defend: '수비', expand: '확장', attack: '공격' },
     { defend: '#60a5fa', expand: '#4ade80', attack: '#f87171' },
     me.doctrine, (v) => HG.emit('setDoctrine', v));
-  const tgt = ensure(box, 'target-row', (n) => { n.innerHTML = '<div class="hint" style="margin:8px 0 4px">공격 대상 국가</div>'; });
+  const tgt = ensure(box, 'target-row', (n) => { n.innerHTML = '<div class="hint" style="margin:8px 0 4px">공격 대상 국가 <span class="muted">— 고른 나라만 공격합니다 (여러 나라 선택 가능)</span></div>'; });
   let chips = tgt.querySelector('.chips');
   if (!chips) { chips = el('div', 'chips'); tgt.appendChild(chips); }
   chips.innerHTML = '';
-  const mk = (label, val, color, hostile) => {
-    const b = el('button', 'chip' + (String(me.attackTarget) === String(val) ? ' active' : ''), label);
+  // 방금 누른 값을 서버 응답 전까지 우선한다 — 빠르게 여러 나라를 눌러도 앞의 선택이 사라지지 않게
+  if (pendingTarget && (Date.now() - pendingTarget.at > 4000 || JSON.stringify(pendingTarget.v) === JSON.stringify(me.attackTarget))) pendingTarget = null;
+  const cur = pendingTarget ? pendingTarget.v : me.attackTarget;
+  const list = Array.isArray(cur) ? cur : typeof cur === 'number' ? [cur] : [];
+  const send = (target) => {
+    pendingTarget = { v: target, at: Date.now() };
+    HG.emit('setDoctrine', { ...HG.myNation().doctrine, target }, (res) => { if (!res || !res.ok) pendingTarget = null; });
+    renderPolicy(g, HG.myNation());
+  };
+  const mk = (label, active, onclick, color, disabled, title) => {
+    const b = el('button', 'chip' + (active ? ' active' : ''), label);
     if (color) b.style.borderColor = color;
-    if (hostile === false) { b.disabled = true; b.title = '적대 관계가 아닙니다 (외교 탭)'; }
-    b.onclick = () => HG.emit('setDoctrine', { ...me.doctrine, target: val });
+    if (disabled) b.disabled = true;
+    if (title) b.title = title;
+    b.onclick = onclick;
     chips.appendChild(b);
   };
-  mk('모든 적국', 'any');
+  mk('공격 안 함', cur === 'none' || (Array.isArray(cur) && !cur.length), () => send('none'));
+  mk('모든 적국', cur === 'any', () => send('any'), null, false, '적대 관계인 모든 나라를 공격합니다');
   for (const n of g.nations) {
     if (n.idx === me.idx || !n.alive) continue;
     const r = g.dip && g.dip.rel[relKey(me.idx, n.idx)];
-    mk(n.title, n.idx, n.color, !r || r.s === 'war');
+    const hostile = !r || r.s === 'war';
+    const on = list.includes(n.idx);
+    mk((on ? '⚔ ' : '') + n.title, on, () => send(on ? list.filter((i) => i !== n.idx) : [...list, n.idx]), n.color, !hostile && !on, hostile ? (on ? '눌러서 공격 대상에서 빼기' : '눌러서 공격 대상에 넣기') : '적대 관계가 아닙니다 (외교 탭)');
   }
+  let note = tgt.querySelector('.tgt-note');
+  if (!note) { note = el('div', 'hint tgt-note'); note.style.marginTop = '4px'; tgt.appendChild(note); }
+  note.textContent = cur === 'none' || (Array.isArray(cur) && !cur.length)
+    ? '지금은 아무 나라도 공격하지 않습니다. 공격 비율의 부대는 대상이 정해질 때까지 수비합니다.'
+    : cur === 'any' ? '적대 관계인 모든 나라의 도시를 공격합니다.' : `공격 대상: ${list.map((i) => (HG.nationByIdx(i) || {}).title).join(', ')}`;
 }
 
 /* ---------------------------------------------------------------- 산업 */
@@ -732,7 +751,7 @@ function renderRank(g, me) {
     let intel = '';
     if (n.idx !== me.idx) {
       intel = recon
-        ? `<br><span class="muted">예산 산${n.budget.industry}/연${n.budget.research}/국${n.budget.military}/금${n.budget.finance} · 교리 수${n.doctrine.defend}/확${n.doctrine.expand}/공${n.doctrine.attack} · 목표 ${n.attackTarget === 'any' ? '모든 적' : (HG.nationByIdx(n.attackTarget) || {}).title} · 피로 ${n.weariness}</span>`
+        ? `<br><span class="muted">예산 산${n.budget.industry}/연${n.budget.research}/국${n.budget.military}/금${n.budget.finance} · 교리 수${n.doctrine.defend}/확${n.doctrine.expand}/공${n.doctrine.attack} · 목표 ${n.attackTarget === 'any' ? '모든 적' : n.attackTarget === 'none' ? '없음' : [].concat(n.attackTarget).map((i) => (HG.nationByIdx(i) || {}).title).join('·')} · 피로 ${n.weariness}</span>`
         : `<br><span class="muted">🔒 내부 정보 — 정찰 위성 필요</span>`;
     }
     const A = HG.C.ACHIEVEMENTS;

@@ -63,8 +63,15 @@ function setRelation(game, a, b, s) {
   const A = game.nations[a], B = game.nations[b];
   // 관계가 바뀌면 양쪽 부대 임무를 즉시 재검토한다
   for (const u of game.units.values()) if ((u.owner === a || u.owner === b) && u.mission !== 'manual') u.nextThink = 0;
-  if (A.attackTarget === b && s !== 'war') A.attackTarget = 'any';
-  if (B.attackTarget === a && s !== 'war') B.attackTarget = 'any';
+  if (s !== 'war') { dropTarget(A, b); dropTarget(B, a); }
+}
+
+// 조약을 맺은 나라는 공격 대상에서 뺀다. 고른 나라 목록이면 그 나라만 빠지고(남은 게 없으면 공격 안 함),
+// 봇의 단일 대상이면 '모든 적국'으로 돌아간다. 사람의 '공격 안 함'이 '모든 적국'으로 바뀌는 일은 없다.
+function dropTarget(N, idx) {
+  const t = N.attackTarget;
+  if (Array.isArray(t)) { const l = t.filter((i) => i !== idx); N.attackTarget = l.length ? l : 'none'; }
+  else if (t === idx) N.attackTarget = 'any';
 }
 
 // 조약 파기 → 적대. 신뢰 −40, 제3국의 신뢰 −10, 파기한 쪽 전군 사기(병력) −3
@@ -246,7 +253,7 @@ function botThink(game, me) {
     }
   }
   // 공격 대상이 비적대면 해제
-  if (M.attackTarget !== 'any' && !isHostile(game, me, M.attackTarget)) M.attackTarget = 'any';
+  if (typeof M.attackTarget === 'number' && !isHostile(game, me, M.attackTarget)) M.attackTarget = 'any';
 }
 
 function publicState(game) {

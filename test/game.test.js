@@ -42,10 +42,14 @@ test('예산·교리·산업·포트폴리오 비율은 정규화되어 합이 1
   const b = g.nation('p0').budget;
   assert.strictEqual(Math.round(b.industry + b.research + b.military + b.finance + b.reserve), 100);
   assert.strictEqual(b.industry, 60);
+  assert.strictEqual(g.nation('p0').attackTarget, 'none', '사람은 기본적으로 아무 나라도 공격하지 않는다');
+  assert.strictEqual(g.nation('p1').attackTarget, 'any', '봇은 모든 적국');
   assert.ok(g.setDoctrine('p0', { defend: 1, expand: 0, attack: 1, target: 1 }).ok);
   assert.strictEqual(g.nation('p0').doctrine.defend, 50);
-  assert.strictEqual(g.nation('p0').attackTarget, 1);
-  assert.ok(g.setDoctrine('p0', { defend: 1, expand: 0, attack: 1, target: 0 }).ok, '자기 자신을 공격 대상으로 지정하면 any 로 떨어진다');
+  assert.deepStrictEqual(g.nation('p0').attackTarget, [1]);
+  assert.ok(g.setDoctrine('p0', { defend: 1, expand: 0, attack: 1, target: [0] }).ok, '자기 자신은 대상이 될 수 없다');
+  assert.strictEqual(g.nation('p0').attackTarget, 'none');
+  assert.ok(g.setDoctrine('p0', { defend: 1, expand: 0, attack: 1, target: 'any' }).ok);
   assert.strictEqual(g.nation('p0').attackTarget, 'any');
   assert.ok(g.setIndustry('p0', { resource: 0, factory: 0, infra: 0, defense: 0 }).ok);
   assert.strictEqual(g.nation('p0').industry.resource, 35, '전부 0 이면 기본값');
@@ -508,6 +512,31 @@ test('첩보: 비축과 대기 시간이 필요하고, 성공하면 효과·실�
   const ps = g.publicState();
   assert.ok(Array.isArray(ps.nations[0].ach) && ps.nations[0].ach.includes('rich'));
   assert.ok(ps.projects && ps.projects.expo && ps.projects.expo.d === 0);
+});
+
+test('공격 대상: 고른 나라의 도시만 공격하고, 조약을 맺으면 그 나라만 빠진다', () => {
+  const Dip = require('../src/diplomacy');
+  const g = mk(4);
+  const me = g.nation('p0');
+  const cityOf = (i) => g.cities.find((c) => c.owner === i);
+  // 기본(공격 안 함): 어떤 적 도시도 공격 목표가 아니다
+  for (const i of [1, 2, 3]) assert.ok(!g.isEnemyCityFor(me, cityOf(i)));
+  assert.ok(g.setDoctrine('p0', { ...me.doctrine, target: [1, 3] }).ok);
+  assert.ok(g.isEnemyCityFor(me, cityOf(1)) && g.isEnemyCityFor(me, cityOf(3)));
+  assert.ok(!g.isEnemyCityFor(me, cityOf(2)), '고르지 않은 나라는 공격하지 않는다');
+  // 1과 불가침 → 1만 빠지고 3은 남는다 ('모든 적국'으로 바뀌지 않는다)
+  Dip.propose(g, 0, 1, 'peace'); const r = Dip.relOf(g, 0, 1); r.trust = 100; if (r.s !== 'peace') { r.s = 'war'; Dip.respond(g, 1, (g.offers[0] || {}).id, true); }
+  if (Dip.stateOf(g, 0, 1) !== 'peace') { r.s = 'peace'; Dip.relOf(g, 0, 1); }
+  g.pickMission(me);
+  assert.ok(!g.targets(me, 1) && g.targets(me, 3));
+  assert.ok(!g.targets(me, 2));
+  // 적대가 아닌 나라는 지정할 수 없다
+  assert.ok(!g.setDoctrine('p0', { ...me.doctrine, target: [1] }).ok);
+  // 자동 내각(봇 로직)을 켜도 사람의 공격 대상은 그대로
+  const { think } = require('../src/bot');
+  me.autoCabinet = true; const before = JSON.stringify(me.attackTarget);
+  think(g, 'p0', { diplomacy: false });
+  assert.strictEqual(JSON.stringify(me.attackTarget), before);
 });
 
 console.log(`${passed} tests passed`);

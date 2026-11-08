@@ -70,7 +70,9 @@ function think(game, nationId, opts = {}) {
   if (diplomacy) Dip.botThink(game, n.idx);
   // 공격 대상: 적대국 중 가장 약한 이웃
   const hostiles = others.filter((o) => Dip.isHostile(game, n.idx, o.idx));
-  if (hostiles.length) {
+  // 공격 대상은 지도자의 결정 — 사람 국가의 자동 내각(diplomacy=false)은 건드리지 않는다
+  if (!diplomacy) { /* 공격 대상 유지 */ }
+  else if (hostiles.length) {
     let best = 'any', bestS = Infinity;
     for (const o of hostiles) {
       const cap = game.cityById.get(o.capitalId);
