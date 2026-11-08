@@ -153,7 +153,8 @@ class Game {
     this.units = new Map();
     Dip.install(this);
     this.market = Object.fromEntries(Object.keys(MATERIALS).map((k) => [k, { price: MATERIALS[k].base, base: MATERIALS[k].base }]));
-    this.stocks = Object.fromEntries(STOCK_ORDER.map((k) => [k, { price: STOCKS[k].price, mood: 1, hist: { 0: STOCKS[k].price } }]));
+    // 주가 = 기본가(base, 실적·세계 흐름) × (1 + 체결 충격). 충격은 매매 때 생겼다가 금방 사라진다 — 자기 매수로 주가가 영구히 펌핑되지 않게
+    this.stocks = Object.fromEntries(STOCK_ORDER.map((k) => [k, { price: STOCKS[k].price, base: STOCKS[k].price, impact: 0, mood: 1, hist: { 0: STOCKS[k].price } }]));
     this._histSeq = 0;
     this.world = { war: 0, research: 0, build: 0 }; // 주식 드라이버용 세계 지표 (EMA)
     // 국가 프로젝트: 세계에 하나뿐. prog[국가] 에 투입액이 쌓이고 먼저 채운 나라가 가져간다.
@@ -188,15 +189,15 @@ class Game {
     for (const c of this.cities) if (c.x === x && c.y === y) return c;
     return null;
   }
+  // 도시 관할 구역 안의 자원 칸 수
   countResourceTiles(c) {
-    const R = RULES.cityRadius[c.size];
+    const ci = this.cities ? this.cities.indexOf(c) : this.map.cities.findIndex((x) => x.id === c.id);
     const out = { iron: 0, oil: 0, farm: 0 };
-    for (let y = c.y - R; y <= c.y + R; y++) {
-      for (let x = c.x - R; x <= c.x + R; x++) {
-        if (!this.inBounds(x, y)) continue;
-        const r = this.map.resources[y * this.W + x];
-        if (r && Math.hypot(x - c.x, y - c.y) <= R) out[r]++;
-      }
+    const prov = this.map.prov;
+    for (let i = 0; i < prov.length; i++) {
+      if (prov[i] !== ci) continue;
+      const r = this.map.resources[i];
+      if (r) out[r]++;
     }
     return out;
   }
@@ -443,86 +444,11 @@ class Game {
 
   // 도시 반경 기준 기본 영토: 각 도시에서 BFS(통행 가능 육지)로 반경까지 퍼뜨린다.
   // 가장 가까운 도시가 이긴다. 반경 밖의 타일은 부대가 칠한 값을 유지한다.
+  // 영토 = 도시 관할 구역. 각 칸은 지도 생성 때 정해진 소속 도시를 따르고, 도시 주인이 바뀌면 구역 전체가 넘어간다.
+  // (부대가 지나간 길이 영토가 되지 않는다 — 땅은 도시를 점령해야 얻는다)
   recomputeTerritory() {
-    const W = this.W, H = this.H;
-    const dist = new Int16Array(W * H).fill(32767);
-    const own = new Int16Array(W * H).fill(-1);
-    const src = new Int16Array(W * H).fill(-1);
-    const queue = [];
-    this.cities.forEach((c, ci) => {
-      if (c.owner < 0) return;
-      const i = c.y * W + c.x;
-      dist[i] = 0; own[i] = c.owner; src[i] = ci;
-      queue.push(i);
-    });
-    let qi = 0;
-    while (qi < queue.length) {
-      const i = queue[qi++];
-      const c = this.cities[src[i]];
-      const R = RULES.cityRadius[c.size];
-      const d = dist[i];
-      const x = i % W, y = (i - x) / W;
-      for (let oy = -1; oy <= 1; oy++) {
-        for (let ox = -1; ox <= 1; ox++) {
-          if (!ox && !oy) continue;
-          const nx = x + ox, ny = y + oy;
-          if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
-          // 둥근 영토: 도시에서 유클리드 반경 안쪽만
-          if (Math.hypot(nx - c.x, ny - c.y) > R + 0.3) continue;
-          const j = ny * W + nx;
-          const t = this.map.tiles[j];
-          if (t === 'water') continue;
-          const nd = d + 1;
-          if (nd < dist[j]) { dist[j] = nd; own[j] = own[i]; src[j] = src[i]; queue.push(j); }
-        }
-      }
-    }
-    for (let i = 0; i < own.length; i++) if (own[i] >= 0) this.territory[i] = own[i];
-    // 도시 타일은 항상 도시 주인의 것
-    for (const c of this.cities) this.territory[c.y * W + c.x] = c.owner;
-  }
-
-  // 전선에서 멀어진 점령지는 천천히 원래 도시 주인에게 돌아간다
-  healTerritory() {
-    const W = this.W, H = this.H;
-    const enemyNear = (x, y, ownerIdx) => {
-      for (const u of this.units.values()) {
-        if (u.owner === ownerIdx || !u.ground || !this.hostile(u.owner, ownerIdx)) continue;
-        if (cheb(u.tx, u.ty, x, y) <= 2) return true;
-      }
-      return false;
-    };
-    for (const c of this.cities) {
-      if (c.owner < 0) continue;
-      const R = RULES.cityRadius[c.size] - 1;
-      for (let y = c.y - R; y <= c.y + R; y++) {
-        for (let x = c.x - R; x <= c.x + R; x++) {
-          if (!this.inBounds(x, y)) continue;
-          const i = y * W + x;
-          if (this.territory[i] === c.owner || this.territory[i] === -1) continue;
-          if (this.map.tiles[i] === 'water') continue;
-          if (Math.hypot(x - c.x, y - c.y) > R) continue;
-          if (Math.random() < 0.35 && !enemyNear(x, y, c.owner)) this.territory[i] = c.owner;
-        }
-      }
-    }
-  }
-
-  paintTerritory(u) {
-    const W = this.W;
-    for (let oy = -1; oy <= 1; oy++) {
-      for (let ox = -1; ox <= 1; ox++) {
-        const x = u.tx + ox, y = u.ty + oy;
-        if (!this.inBounds(x, y)) continue;
-        const i = y * W + x;
-        const t = this.map.tiles[i];
-        if (t === 'water' || t === 'peak') continue;
-        if (t === 'urban') continue; // 도시 타일은 점령으로만 바뀐다
-        const cur = this.territory[i];
-        if (cur >= 0 && cur !== u.owner && !this.hostile(u.owner, cur)) continue; // 불가침·동맹국 땅은 건드리지 않는다
-        this.territory[i] = u.owner;
-      }
-    }
+    const prov = this.map.prov;
+    for (let i = 0; i < prov.length; i++) this.territory[i] = prov[i] >= 0 ? this.cities[prov[i]].owner : -1;
   }
 
   /* ================================================================ 부대 */
@@ -829,7 +755,6 @@ class Game {
     const tx = Math.round(u.x), ty = Math.round(u.y);
     if (tx !== u.tx || ty !== u.ty) {
       u.tx = tx; u.ty = ty;
-      if (u.ground) this.paintTerritory(u);
     }
   }
 
@@ -1180,15 +1105,18 @@ class Game {
       build: clamp(this.world.build, 0, 2) - 0.2,
       stable: 0,
     };
+    // 20분 판에서 대략 −40% ~ +150% 범위로 움직이도록 (초당 변화율이 작아야 3초 사이 수익률이 튀지 않는다)
     for (const k of STOCK_ORDER) {
       const s = this.stocks[k], def = STOCKS[k];
-      const drift = 0.0004 + drivers[def.driver] * 0.0025;
+      const drift = 0.00012 + clamp(drivers[def.driver], -0.6, 1.5) * 0.00035;
       const noise = (Math.random() * 2 - 1) * def.sigma * 0.02;
-      s.mood += (1 - s.mood) * 0.02 * dt + noise * Math.sqrt(dt);
-      s.mood = clamp(s.mood, 0.45, 1.9);
-      s.price *= 1 + (drift * dt) + (s.mood - 1) * 0.004 * dt;
-      if (this.event && this.event.stock === k) s.price *= 1 + this.event.drift * dt;
-      s.price = clamp(s.price, 8, 2500);
+      s.mood += (1 - s.mood) * 0.03 * dt + noise * Math.sqrt(dt);
+      s.mood = clamp(s.mood, 0.7, 1.35);
+      let g = drift + (s.mood - 1) * 0.0012;
+      if (this.event && this.event.stock === k) g += this.event.drift * 0.35;
+      s.base = clamp(s.base * (1 + g * dt), def.price * 0.35, def.price * 4);
+      s.impact *= Math.max(0, 1 - 0.08 * dt);
+      s.price = s.base * (1 + s.impact);
     }
     this.world.build *= Math.max(0, 1 - 0.05 * dt);
     this._stockSampleClock += dt;
@@ -1588,7 +1516,7 @@ class Game {
         n.stocks[k] -= q;
         n.stockCost[k] = n.stocks[k] > 0 ? n.stockCost[k] * (n.stocks[k] / (n.stocks[k] + q)) : 0;
         n.cash += rev;
-        this.stocks[k].price *= Math.max(0.9, 1 - 0.00008 * q);
+        this.stockImpact(k, -q);
         if (!n.isBot) this.pushLog(`재무부: ${STOCKS[k].name} ${q}주 매도 (+${Math.round(rev)})`, n.idx);
         if (!n.liquidate && n.cash >= 0) break;
       }
@@ -1615,8 +1543,15 @@ class Game {
     this.spend(n, 'finance', cost);
     n.stockCost[best] += cost;
     n.stocks[best] += q;
-    this.stocks[best].price *= 1 + 0.00008 * q;
+    this.stockImpact(best, q);
     if (!n.isBot && q >= 3) this.pushLog(`재무부: ${STOCKS[best].name} ${q}주 매수 (−${Math.round(cost)})`, n.idx);
+  }
+
+  // 체결 충격: 사면 잠깐 오르고 팔면 잠깐 내린다 (최대 ±15%, 초당 8% 씩 기본가로 복귀)
+  stockImpact(k, q) {
+    const s = this.stocks[k];
+    s.impact = clamp(s.impact + clamp(q * 0.00003, -0.03, 0.03), -0.15, 0.15);
+    s.price = s.base * (1 + s.impact);
   }
 
   /* ================================================================ 점수/통계 */
@@ -1697,8 +1632,6 @@ class Game {
       }
     }
 
-    this._healClock += dt;
-    if (this._healClock >= 8) { this._healClock = 0; this.healTerritory(); }
 
     // 오래된 이펙트 정리
     for (const id of Object.keys(this._fx)) if (this.time - this._fx[id].t > 3) delete this._fx[id];
@@ -1784,7 +1717,7 @@ class Game {
       ranking: this.ranking,
       hist: this.ended ? this.hist : null, // 결과 그래프 — 종료 때만 보낸다
       event: this.event ? { name: this.event.name, u: Math.round(this.time + this.event.left) } : null, // 남은 초는 클라이언트가 u - t 로 계산
-      map: this._mapState || (this._mapState = { w: this.W, h: this.H, seed: this.map.seed || 0, tiles: this.map.tiles, res: this.map.resources.map((r) => r || 0) }),
+      map: this._mapState || (this._mapState = { w: this.W, h: this.H, seed: this.map.seed || 0, tiles: this.map.tiles, res: this.map.resources.map((r) => r || 0), prov: this.map.prov, roads: this.map.roads, rivers: this.map.rivers }), // 정적 — 처음 한 번만 전송
       terr: this.territory,
       dip: Dip.publicState(this),
       council: Council.publicState(this),
@@ -1794,7 +1727,7 @@ class Game {
       nations: ec.nations,
       cities: this.cities.map((c) => ({
         id: c.id, name: c.name, x: c.x, y: c.y, size: c.size, o: c.owner, pop: Math.round(c.pop),
-        hp: Math.round(c.hp), maxHp: c.maxHp, b: c.b, slots: c.slots, res: c.resTiles, unrest: Math.round(c.unrest), cs: this.isCoastal(c) ? 1 : 0,
+        hp: Math.round(c.hp / 5) * 5, maxHp: c.maxHp, b: c.b, slots: c.slots, res: c.resTiles, unrest: Math.ceil(c.unrest / 5) * 5, cs: this.isCoastal(c) ? 1 : 0, // 체력·저항은 5 단위 — 도시가 많아 매초 바뀌는 값을 줄인다
         cap: c.cap ? { by: c.cap.by, p: Math.round((c.cap.t / RULES.captureSeconds) * 100) } : 0,
       })),
       units,

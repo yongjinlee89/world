@@ -73,7 +73,7 @@ function buildTerrain(map) {
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
       const t = tiles[y * w + x];
-      let col = COL[t] || COL.plain;
+      let col = (t === 'river' || t === 'road') ? COL.plain : (COL[t] || COL.plain);
       const v = (hash(x, y, 7) - 0.5) * 18;
       // 바다는 해안에서 멀수록 짙게
       let d = 0;
@@ -143,44 +143,9 @@ function buildTerrain(map) {
       }
     }
   }
-  // 5) 하천 리본
-  const ribbon = (cx, cy, nx, ny) => {
-    c.strokeStyle = 'rgba(28,70,120,0.95)'; c.lineWidth = 8; c.beginPath(); c.moveTo(cx, cy); c.lineTo(nx, ny); c.stroke();
-    c.strokeStyle = 'rgba(96,160,220,0.95)'; c.lineWidth = 4.5; c.beginPath(); c.moveTo(cx, cy); c.lineTo(nx, ny); c.stroke();
-    c.strokeStyle = 'rgba(200,230,255,0.45)'; c.lineWidth = 1.2; c.beginPath(); c.moveTo(cx, cy - 1); c.lineTo(nx, ny - 1); c.stroke();
-  };
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      if (at(x, y) !== 'river') continue;
-      const cx = x * TS + TS / 2, cy = y * TS + TS / 2;
-      let links = 0;
-      for (const [ox, oy] of [[1, 0], [0, 1], [1, 1], [-1, 1]]) {
-        const nt = at(x + ox, y + oy);
-        if (nt === 'river' || nt === 'water') { links++; ribbon(cx, cy, cx + ox * TS, cy + oy * TS); }
-      }
-      for (const [ox, oy] of [[-1, 0], [0, -1], [-1, -1], [1, -1]]) if (at(x + ox, y + oy) === 'water') { links++; ribbon(cx, cy, cx + ox * TS, cy + oy * TS); }
-      if (links === 0) { c.fillStyle = 'rgba(96,160,220,0.95)'; c.beginPath(); c.arc(cx, cy, 4, 0, Math.PI * 2); c.fill(); }
-    }
-  }
-  // 6) 고속도로 (갓길 + 아스팔트 + 중앙선)
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      const t = at(x, y);
-      if (t !== 'road' && t !== 'urban') continue;
-      const cx = x * TS + TS / 2, cy = y * TS + TS / 2;
-      let links = 0;
-      for (const [ox, oy] of [[1, 0], [0, 1], [1, 1], [-1, 1]]) {
-        const nt = at(x + ox, y + oy);
-        if (nt !== 'road' && nt !== 'urban') continue;
-        links++;
-        const nx = cx + ox * TS, ny = cy + oy * TS;
-        c.strokeStyle = 'rgba(30,32,36,0.55)'; c.lineWidth = 8; c.beginPath(); c.moveTo(cx, cy); c.lineTo(nx, ny); c.stroke();
-        c.strokeStyle = '#43464d'; c.lineWidth = 5.5; c.beginPath(); c.moveTo(cx, cy); c.lineTo(nx, ny); c.stroke();
-        c.strokeStyle = 'rgba(240,210,100,0.7)'; c.lineWidth = 1; c.setLineDash([4, 4]); c.beginPath(); c.moveTo(cx, cy); c.lineTo(nx, ny); c.stroke(); c.setLineDash([]);
-      }
-      if (t === 'road' && links === 0) { c.fillStyle = '#43464d'; c.beginPath(); c.arc(cx, cy, 3, 0, Math.PI * 2); c.fill(); }
-    }
-  }
+  // 5) 하천 · 6) 고속도로 — 지도 생성 때 저장한 실제 경로를 매끈한 곡선으로 그린다
+  drawRivers(c, map, at);
+  drawRoads(c, map, at);
   // 7) 도시 블록
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
@@ -208,6 +173,101 @@ function buildTerrain(map) {
     }
   }
   return cv;
+}
+/* ================================================================== 하천 · 고속도로 (곡선 경로) */
+const K = TS / 32; // 선 굵기 배율
+// 칸 좌표 목록 → 화면 좌표. jitter 를 주면 물길이 칸 중심에서 살짝 굽이친다 (결정적).
+function pathPoints(flat, jitter, salt) {
+  const pts = [];
+  for (let k = 0; k < flat.length; k += 2) {
+    const x = flat[k], y = flat[k + 1];
+    const end = k === 0 || k === flat.length - 2;
+    const jx = end ? 0 : (hash(x, y, salt) - 0.5) * jitter * TS, jy = end ? 0 : (hash(x, y, salt + 1) - 0.5) * jitter * TS;
+    pts.push([x * TS + TS / 2 + jx, y * TS + TS / 2 + jy]);
+  }
+  return pts;
+}
+// 차이킨 곡선 다듬기: 모서리를 깎아 계단·꺾임을 없앤다 (양 끝점 유지)
+function chaikin(pts, iter) {
+  let p = pts;
+  for (let it = 0; it < iter; it++) {
+    if (p.length < 3) return p;
+    const q = [p[0]];
+    for (let i = 0; i < p.length - 1; i++) {
+      const [x0, y0] = p[i], [x1, y1] = p[i + 1];
+      q.push([x0 * 0.75 + x1 * 0.25, y0 * 0.75 + y1 * 0.25], [x0 * 0.25 + x1 * 0.75, y0 * 0.25 + y1 * 0.75]);
+    }
+    q.push(p[p.length - 1]);
+    p = q;
+  }
+  return p;
+}
+function strokePath(c, p) {
+  c.beginPath(); c.moveTo(p[0][0], p[0][1]);
+  for (let i = 1; i < p.length; i++) c.lineTo(p[i][0], p[i][1]);
+  c.stroke();
+}
+// 굵기가 변하는 선: 짧은 조각을 둥근 끝으로 이어 그린다
+function strokeTapered(c, p, wFn) {
+  for (let i = 0; i < p.length - 1; i++) {
+    c.lineWidth = wFn(i / (p.length - 1));
+    c.beginPath(); c.moveTo(p[i][0], p[i][1]); c.lineTo(p[i + 1][0], p[i + 1][1]); c.stroke();
+  }
+}
+function drawRivers(c, map) {
+  const rivers = (map.rivers || []).map((r, ri) => chaikin(pathPoints(r, 0.45, 70 + ri), 3));
+  c.lineCap = 'round'; c.lineJoin = 'round';
+  // 상류는 가늘고 하구로 갈수록 넓어진다
+  const w = (t) => (2.2 + 6.5 * Math.pow(t, 0.8)) * K;
+  for (const p of rivers) { c.strokeStyle = 'rgba(52,74,40,0.35)'; strokeTapered(c, p, (t) => w(t) + 7 * K); }  // 강둑 그림자
+  for (const p of rivers) { c.strokeStyle = 'rgba(150,170,110,0.55)'; strokeTapered(c, p, (t) => w(t) + 3.5 * K); } // 모래톱
+  for (const p of rivers) { c.strokeStyle = '#255a8c'; strokeTapered(c, p, (t) => w(t) + 1.2 * K); }
+  for (const p of rivers) {
+    // 물 — 가장자리보다 밝은 중심
+    c.strokeStyle = '#3a78b4'; strokeTapered(c, p, w);
+    c.strokeStyle = 'rgba(110,170,220,0.55)'; strokeTapered(c, p, (t) => w(t) * 0.4);
+  }
+  // 물살 하이라이트: 군데군데 짧은 흰 선
+  c.strokeStyle = 'rgba(225,242,255,0.55)'; c.lineWidth = 1 * K;
+  rivers.forEach((p, ri) => {
+    for (let i = 4; i < p.length - 3; i += 7) {
+      if (hash(i, ri, 88) < 0.45) continue;
+      const [x0, y0] = p[i], [x1, y1] = p[i + 2];
+      c.beginPath(); c.moveTo(x0, y0 - 0.6); c.lineTo(x1, y1 - 0.6); c.stroke();
+    }
+  });
+}
+function drawRoads(c, map, at) {
+  const roads = (map.roads || []).map((r) => ({ flat: r, p: chaikin(pathPoints(r, 0, 0), 3) }));
+  c.lineCap = 'round'; c.lineJoin = 'round';
+  // 층별로 전체 도로망을 그려야 교차로가 이음매 없이 이어진다
+  c.save(); c.translate(1.2 * K, 1.8 * K);
+  c.strokeStyle = 'rgba(0,0,0,0.32)'; c.lineWidth = 8.5 * K; for (const r of roads) strokePath(c, r.p); // 그림자
+  c.restore();
+  c.strokeStyle = '#b9b29a'; c.lineWidth = 7.4 * K; for (const r of roads) strokePath(c, r.p);       // 갓길
+  c.strokeStyle = '#3b3f46'; c.lineWidth = 5.6 * K; for (const r of roads) strokePath(c, r.p);       // 아스팔트
+  c.strokeStyle = 'rgba(255,255,255,0.10)'; c.lineWidth = 1.2 * K;
+  c.save(); c.translate(0, -1.4 * K); for (const r of roads) strokePath(c, r.p); c.restore();          // 노면 반사
+  c.strokeStyle = 'rgba(245,205,90,0.85)'; c.lineWidth = 1 * K; c.setLineDash([5 * K, 5 * K]);
+  for (const r of roads) strokePath(c, r.p);                                                          // 중앙선
+  c.setLineDash([]);
+  // 교량: 도로가 강 칸을 지나는 곳에 난간
+  for (const r of roads) {
+    const f = r.flat;
+    for (let k = 2; k < f.length - 2; k += 2) {
+      if (at(f[k], f[k + 1]) !== 'river') continue;
+      const ax = f[k - 2], ay = f[k - 1], bx = f[k + 2], by = f[k + 3];
+      const cx = f[k] * TS + TS / 2, cy = f[k + 1] * TS + TS / 2;
+      const ang = Math.atan2(by - ay, bx - ax);
+      c.save(); c.translate(cx, cy); c.rotate(ang);
+      const L = TS * 0.62, Wd = 4.2 * K;
+      c.fillStyle = 'rgba(0,0,0,0.35)'; c.fillRect(-L / 2 + 1.5 * K, -Wd - 1.5 * K + 2 * K, L, Wd * 2 + 3 * K);
+      c.fillStyle = '#8f8a7c'; c.fillRect(-L / 2, -Wd - 1.5 * K, L, Wd * 2 + 3 * K);
+      c.fillStyle = '#4a4d54'; c.fillRect(-L / 2, -Wd + 0.4 * K, L, Wd * 2 - 0.8 * K);
+      c.fillStyle = '#d8d3c4'; c.fillRect(-L / 2, -Wd - 1.5 * K, L, 1.2 * K); c.fillRect(-L / 2, Wd + 0.3 * K, L, 1.2 * K);
+      c.restore();
+    }
+  }
 }
 function drawPlain(c, sx, sy, x, y) {
   const n = 2 + Math.floor(hash(x, y, 31) * 3);
@@ -278,6 +338,22 @@ function buildTerritory(g) {
       c.fillStyle = `rgba(${r},${gg},${b},0.22)`;
       c.fillRect(x * TS, y * TS, TS + 0.5, TS + 0.5);
     }
+  }
+  // 지방(도시 관할 구역) 경계: 옅은 점선. 국경은 아래에서 굵게 덮는다
+  const prov = g.map.prov;
+  if (prov) {
+    const pv = (x, y) => (x < 0 || y < 0 || x >= w || y >= h ? -2 : prov[y * w + x]);
+    c.strokeStyle = 'rgba(255,255,255,0.22)'; c.lineWidth = 1; c.setLineDash([3, 3]);
+    c.beginPath();
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const p = prov[y * w + x];
+      if (p < 0) continue;
+      const sx = x * TS, sy = y * TS;
+      const r = pv(x + 1, y), d = pv(x, y + 1);
+      if (r >= 0 && r !== p) { c.moveTo(sx + TS, sy); c.lineTo(sx + TS, sy + TS); }
+      if (d >= 0 && d !== p) { c.moveTo(sx, sy + TS); c.lineTo(sx + TS, sy + TS); }
+    }
+    c.stroke(); c.setLineDash([]);
   }
   // 국경 글로우 + 선
   c.lineCap = 'square';
@@ -846,8 +922,25 @@ function drawSelection(g, now) {
     ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.setLineDash([6, 4]); ctx.lineDashOffset = -now / 40;
     ctx.beginPath(); ctx.arc(s.x, s.y, R + 12, 0, Math.PI * 2); ctx.stroke();
     ctx.setLineDash([]);
-    const RR = HG.C.RULES.cityRadius[c.size] * z;
-    ctx.strokeStyle = 'rgba(255,255,255,0.2)'; ctx.beginPath(); ctx.arc(s.x, s.y, RR, 0, Math.PI * 2); ctx.stroke();
+    // 이 도시의 관할 구역 강조
+    const prov = g.map.prov, ci = g.cities.indexOf(c), w = g.map.w, h = g.map.h;
+    if (prov && ci >= 0) {
+      const tl = HG.screenToTile(0, 0), br = HG.screenToTile(window.innerWidth, window.innerHeight);
+      const x0 = Math.max(0, Math.floor(tl.x) - 1), y0 = Math.max(0, Math.floor(tl.y) - 1), x1 = Math.min(w - 1, Math.ceil(br.x) + 1), y1 = Math.min(h - 1, Math.ceil(br.y) + 1);
+      ctx.fillStyle = 'rgba(255,255,255,0.07)';
+      ctx.strokeStyle = 'rgba(255,255,255,0.75)'; ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+        if (prov[y * w + x] !== ci) continue;
+        const p = HG.tileToScreen(x - 0.5, y - 0.5);
+        ctx.fillRect(p.x, p.y, z, z);
+        if (x + 1 >= w || prov[y * w + x + 1] !== ci) { ctx.moveTo(p.x + z, p.y); ctx.lineTo(p.x + z, p.y + z); }
+        if (x - 1 < 0 || prov[y * w + x - 1] !== ci) { ctx.moveTo(p.x, p.y); ctx.lineTo(p.x, p.y + z); }
+        if (y + 1 >= h || prov[(y + 1) * w + x] !== ci) { ctx.moveTo(p.x, p.y + z); ctx.lineTo(p.x + z, p.y + z); }
+        if (y - 1 < 0 || prov[(y - 1) * w + x] !== ci) { ctx.moveTo(p.x, p.y); ctx.lineTo(p.x + z, p.y); }
+      }
+      ctx.stroke();
+    }
   } else if (sel.kind === 'tile') {
     const s = HG.tileToScreen(sel.x, sel.y);
     ctx.strokeStyle = 'rgba(255,255,255,0.85)'; ctx.lineWidth = 1.5;

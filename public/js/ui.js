@@ -104,6 +104,21 @@ function renderLobby() {
   $('#lobby-bot-actions').classList.toggle('hidden', !isHost);
   $('#lobby-start').disabled = !isHost;
   $('#lobby-hint').textContent = isHost ? '국가가 2개 이상이면 시작할 수 있습니다. 혼자라면 컴퓨터를 추가하세요.' : '방장이 시작하기를 기다리는 중…';
+  // 지난 판 최종 순위
+  const lr = S.lastResult, box = $('#lobby-last');
+  if (!lr) { box.classList.add('hidden'); return; }
+  box.classList.remove('hidden');
+  box.innerHTML = `<div class="title">🏆 지난 판 최종 순위 <span class="sz">${{ time: '제한 시간 종료', conquest: '최후의 생존', economic: '경제 승리' }[lr.reason] || ''}</span></div>`;
+  const cv = el('canvas'); cv.style.cssText = 'width:100%;height:120px;display:block;margin:4px 0 8px';
+  box.appendChild(cv);
+  const ol = el('ol', 'last-list');
+  for (const r of lr.ranking) {
+    const li = el('li');
+    li.innerHTML = `<span class="flag" style="background:${r.color};color:${r.color};width:10px;height:10px;margin-right:6px;vertical-align:middle"></span><b>${r.title}</b> <span class="muted">${r.name}</span> — 국력 ${fmt(r.score)}<br><span class="muted small">도시 ${r.cities} · 기술 ${r.techs} · 업적 ${r.ach || 0} · 격멸 ${r.kills} / 손실 ${r.losses} · 점령 ${r.captures}${r.alive ? '' : ' · 멸망'}</span>`;
+    ol.appendChild(li);
+  }
+  box.appendChild(ol);
+  requestAnimationFrame(() => drawHistChart(cv, { hist: lr.hist, nations: lr.colors.map((color) => ({ color })) }, 120));
 }
 $('#lobby-add-bot').onclick = () => HG.emit('addBot');
 $('#lobby-remove-bot').onclick = () => HG.emit('removeBot');
@@ -114,11 +129,10 @@ $('#lobby-leave').onclick = () => { HG.emit('leaveRoom'); HG.joined = false; HG.
 function renderGame() {
   const S = HG.S, g = S.game;
   if (!g) return;
-  renderTopbar(g);
-  renderTab();
-  renderSelection();
-  renderResult(S, g);
-  HG.renderVoice();
+  // 각 부분을 따로 감싸 한 곳의 오류가 다른 곳(특히 최종 순위)을 막지 않게 한다
+  for (const fn of [() => renderTopbar(g), renderTab, renderSelection, () => renderResult(S, g), HG.renderVoice]) {
+    try { fn(); } catch (e) { console.error(e); }
+  }
 }
 
 function renderTopbar(g) {
@@ -849,10 +863,10 @@ function renderResult(S, g) {
   $('#result-hint').textContent = HG.isHost() ? '다시 하기를 누르면 대기실로 돌아갑니다.' : '방장이 다시 시작하기를 기다리는 중…';
 }
 // 국력 추이 그래프 (종료 시 서버가 hist 를 보낸다)
-function drawHistChart(cv, g) {
+function drawHistChart(cv, g, height) {
   if (!cv || !g.hist || !g.hist.t.length) return;
   const dpr = window.devicePixelRatio || 1;
-  const W = cv.clientWidth || 400, H = 160;
+  const W = cv.clientWidth || 400, H = height || 160;
   cv.width = W * dpr; cv.height = H * dpr;
   const c = cv.getContext('2d'); c.setTransform(dpr, 0, 0, dpr, 0, 0);
   c.clearRect(0, 0, W, H);

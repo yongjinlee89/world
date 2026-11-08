@@ -185,7 +185,19 @@ class Room {
     return { ok: true };
   }
 
+  // 지난 판 결과를 방에 보관한다 — 대기실로 돌아가도(다시 하기·접속 끊김 정리) 최종 순위를 볼 수 있게
+  saveResult() {
+    const g = this.game;
+    if (!g || !g.ranking) return;
+    this.lastResult = {
+      reason: g.endReason || 'time',
+      ranking: g.ranking.map((r) => ({ ...r, color: g.nations[r.idx].color, ach: g.nations[r.idx].ach.length })),
+      hist: g.hist,
+      colors: g.nations.map((n) => n.color),
+    };
+  }
   resetToLobby() {
+    if (this.game && this.game.ended) this.saveResult();
     this.stopLoop();
     this.phase = 'lobby';
     this.game = null;
@@ -234,6 +246,7 @@ class Room {
 
     if (this.game.ended) {
       this.phase = 'ended';
+      this.saveResult();
       this.stopLoop();
       this.touch();
       this.onChange(this);
@@ -281,6 +294,7 @@ class Room {
         voice: p.voice ? { on: !!p.voice.on, muted: !!p.voice.muted } : 0,
       })),
       chat: Object.fromEntries(this.chat.slice(-60).map((e) => [e.id, e])),
+      lastResult: this.phase === 'lobby' ? (this.lastResult || null) : null,
       constants: Room._constants || (Room._constants = Game.constants()),
     };
     if (this.game) {

@@ -291,7 +291,7 @@ setInterval(() => {
     if (!room.isEmpty()) continue;
     const idle = now - room.updatedAt;
     if (idle > 5 * 60 * 1000) { room.clearAutoTimer(); rooms.delete(id); }
-    else if (idle > 2 * 60 * 1000 && room.phase !== 'lobby') room.resetToLobby();
+    else if (idle > 2 * 60 * 1000 && room.phase === 'playing') room.resetToLobby(); // 끝난 판은 결과를 남겨 둔다 (다시 접속하면 순위가 보이게)
   }
 }, 30 * 1000);
 

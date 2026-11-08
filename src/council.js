@@ -101,7 +101,7 @@ function close(game) {
     const ranked = game.nations.filter((n) => n.alive).sort((a, b) => b.stats.score - a.stats.score);
     const bottom = ranked[ranked.length - 1];
     let pool = 0;
-    for (let i = 0; i < Math.floor(ranked.length / 2); i++) { ranked[i].cash -= 300; pool += 300; }
+    for (let i = 0; i < Math.floor(ranked.length / 2); i++) { const pay = Math.max(0, Math.min(300, Math.floor(ranked[i].cash))); ranked[i].cash -= pay; pool += pay; } // 현금이 없으면 낼 수 있는 만큼만 (적자로 부대가 해산되지 않게)
     if (bottom) bottom.cash += pool;
   }
   if (r.instant === 'boom') {

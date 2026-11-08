@@ -300,3 +300,9 @@ button.vote.active { border-color: var(--accent); color: var(--accent); }
   #minimap { width: 150px; height: 90px; }
   #decision { max-height: 92vh; overflow-y: auto; }
 }
+
+/* 결과 화면: 화면보다 길면 카드 안에서 스크롤 (휴대폰에서 제목·순위가 잘리던 문제) */
+.result-card { max-height: 92vh; overflow-y: auto; }
+#lobby-last { margin-top: 12px; }
+#lobby-last .last-list { padding-left: 22px; line-height: 1.8; font-size: 13px; margin: 0; }
+#lobby-last .last-list li b { color: var(--accent); }

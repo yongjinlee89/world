@@ -163,7 +163,7 @@ const POOL = [
       { label: '지금 전량 매도', desc: '보유 주식 현금화 (수수료 없음)', bot: { 금융형: 1, 산업형: 2, 기술형: 2, 군국형: 2 },
         apply: (g, n) => { for (const k of STOCK_ORDER) { n.cash += n.stocks[k] * g.stocks[k].price; n.stocks[k] = 0; n.stockCost[k] = 0; } } },
       { label: '계속 보유', desc: '배당 +40% 120초 (거품이 꺼지면 손실)', bot: { 금융형: 3, 산업형: 1, 기술형: 1, 군국형: 1 }, def: true,
-        apply: (g, n) => { addBuff(g, n, 'dividend', 0.40, 120, '고배당'); if (Math.random() < 0.35) { for (const k of STOCK_ORDER) g.stocks[k].price *= 0.9; g.pushLog('증시 거품이 꺼졌습니다 — 모든 종목 −10%'); } } },
+        apply: (g, n) => { addBuff(g, n, 'dividend', 0.40, 120, '고배당'); if (Math.random() < 0.35) { for (const k of STOCK_ORDER) { const s = g.stocks[k]; s.base *= 0.9; s.price = s.base * (1 + s.impact); } g.pushLog('증시 거품이 꺼졌습니다 — 모든 종목 −10%'); g.pushNews('📉 증시 거품 붕괴 — 모든 종목 −10%'); } } },
     ],
   },
 ];

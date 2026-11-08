@@ -155,17 +155,30 @@ test('전투: 상성이 손실에 반영된다 (기갑 > 보병)', () => {
   assert.ok(100 - inf.strength > 100 - tank.strength, '보병이 더 많이 잃는다');
 });
 
-test('부대가 지나간 타일은 그 국가의 영토가 된다', () => {
+test('영토는 도시 관할 구역을 따른다: 부대가 지나가도 안 바뀌고, 도시를 점령하면 구역 전체가 넘어간다', () => {
   const g = mk(2);
   const n = g.nation('p0');
+  // 모든 육지 칸 대부분이 어느 도시엔가 속한다
+  const land = g.map.tiles.filter((t) => t !== 'water').length;
+  const covered = g.map.prov.filter((p) => p >= 0).length;
+  assert.ok(covered / land > 0.8, `관할 비율 ${covered}/${land}`);
+  // 수도 관할 구역은 넉넉하다
+  const capIdx = g.cities.findIndex((c) => c.id === n.capitalId);
+  assert.ok(g.map.prov.filter((p) => p === capIdx).length >= 60);
+  // 중립 도시 하나의 구역에 부대를 세워 둬도 영토는 그대로
+  const ci = g.cities.findIndex((c) => c.owner === -1);
+  const c = g.cities[ci];
+  const tiles = g.map.prov.map((p, i) => (p === ci ? i : -1)).filter((i) => i >= 0);
   const u = [...g.units.values()].find((x) => x.owner === n.idx);
-  u.tx = 5; u.ty = 5;
-  // 육지인 자리를 찾는다
-  outer: for (let y = 2; y < g.H - 2; y++) for (let x = 2; x < g.W - 2; x++) {
-    if (g.map.tiles[y * g.W + x] === 'plain' && g.territory[y * g.W + x] === -1) { u.tx = x; u.ty = y; break outer; }
-  }
-  g.paintTerritory(u);
-  assert.strictEqual(g.territory[u.ty * g.W + u.tx], n.idx);
+  u.tx = tiles[0] % g.W; u.ty = Math.floor(tiles[0] / g.W); u.x = u.tx; u.y = u.ty;
+  g.tick(0.25);
+  assert.strictEqual(g.territory[tiles[0]], -1, '지나가기만 해서는 영토가 안 된다');
+  // 도시를 병합하면 구역 전체가 넘어간다
+  g.captureCity(c, n.idx);
+  for (const i of tiles) assert.strictEqual(g.territory[i], n.idx);
+  assert.ok(c.resTiles.iron + c.resTiles.oil + c.resTiles.farm >= 0);
+  // 도시 수가 충분하다 (국가당 중립 4개 이상)
+  assert.ok(g.cities.filter((x) => x.owner === -1).length >= 8);
 });
 
 test('시장: 사면 오르고 팔면 내리며 기준가로 되돌아간다', () => {
