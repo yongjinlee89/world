@@ -137,7 +137,28 @@ const TECHS = {
   cyber:         { id: 'cyber',         name: '사이버전',     era: 3, cost: 1000, req: ['computers'],           col: 3, row: 7, effects: { mult: { cityDef: 0.20, income: 0.10 } },   desc: '도시 방어 +20%, 수입 +10%' },
   recon:         { id: 'recon',         name: '정찰 위성',    era: 2, cost: 420, req: ['radio'],                col: 2, row: 6, effects: { flag: 'recon' },                             desc: '타국의 예산·교리·공격 대상 열람' },
   nuke:          { id: 'nuke',          name: '전략 핵무기',  era: 3, cost: 1900, req: ['precision', 'ai'],     col: 3, row: 9, effects: { flag: 'nuke' },                              desc: '핵 타격 가능 (2,500, 5분 대기) — 세계 신뢰 −30' },
+  // ---- 2.5시대 (빈칸 채우기)
+  mlrs:          { id: 'mlrs',          name: '다연장 로켓',  era: 2, cost: 620, req: ['rocket'],               col: 2, row: 1, effects: { tier: 'arty' },                               desc: '포병 티어 +1' },
+  robotics:      { id: 'robotics',      name: '산업 로봇',    era: 2, cost: 680, req: ['automation'],           col: 2, row: 4, effects: { mult: { factory: 0.20 } },                    desc: '공장 생산 +20% (병력 생산력도 오름)' },
+  refinery:      { id: 'refinery',      name: '정유 고도화',  era: 2, cost: 600, req: ['petrochem'],            col: 2, row: 5, effects: { mult: { resource: 0.20 } },                   desc: '광산·시추소·농장 생산 +20%' },
+  banking:       { id: 'banking',       name: '디지털 금융',  era: 2, cost: 650, req: ['computers'],            col: 2, row: 7, effects: { mult: { dividend: 0.20, income: 0.05 } },     desc: '배당 +20%, 세수 +5%' },
+  amphib:        { id: 'amphib',        name: '상륙작전',     era: 2, cost: 560, req: ['naval', 'logistics'],   col: 2, row: 8, effects: { flag: 'amphib' },                            desc: '수송선 위 지상군 공격·방어 50% → 80%' },
+  civil:         { id: 'civil',         name: '시민 사회',    era: 2, cost: 520, req: ['radio'],                col: 2, row: 9, effects: { flag: 'civil', mult: { income: 0.05 } },      desc: '전쟁 피로 회복 +50%, 세수 +5%' },
+  // ---- 4시대 (미래)
+  railgun:       { id: 'railgun',       name: '레일건 전차',  era: 4, cost: 2200, req: ['mbt3', 'fusion'],      col: 4, row: 0, effects: { tier: 'armor', mult: { atk: 0.05 } },        desc: '기갑 티어 +1, 전군 공격 +5%' },
+  hypersonic:    { id: 'hypersonic',    name: '극초음속 미사일', era: 4, cost: 2300, req: ['precision', 'satellites'], col: 4, row: 1, effects: { tier: 'arty', mult: { artyRange: 1 } }, desc: '포병 티어 +1, 사거리 +1' },
+  sixthgen:      { id: 'sixthgen',      name: '6세대 전투기', era: 4, cost: 2300, req: ['stealth', 'ai'],       col: 4, row: 2, effects: { tier: 'air' },                                desc: '항공 티어 +1' },
+  exosuit:       { id: 'exosuit',       name: '외골격 보병',  era: 4, cost: 2100, req: ['drones', 'robotics'],  col: 4, row: 3, effects: { tier: 'inf', mult: { def: 0.10 } },           desc: '보병 티어 +1, 전군 방어 +10%' },
+  quantum:       { id: 'quantum',       name: '양자 컴퓨터',  era: 4, cost: 2400, req: ['ai', 'banking'],       col: 4, row: 4, effects: { mult: { science: 0.50, dividend: 0.20 } },    desc: '연구 +50%, 배당 +20%' },
+  nanofab:       { id: 'nanofab',       name: '나노 제조',    era: 4, cost: 2600, req: ['fusion', 'robotics'],  col: 4, row: 5, effects: { mult: { factory: 0.40, upkeep: -0.10 } },     desc: '공장 생산 +40%, 유지비 −10%' },
+  orbital:       { id: 'orbital',       name: '궤도 방어망',  era: 4, cost: 2200, req: ['satellites', 'radar'], col: 4, row: 6, effects: { mult: { airDef: 0.30, cityDef: 0.20 } },     desc: '대공 방어 +30%, 도시 방어 +20%' },
+  smartcity:     { id: 'smartcity',     name: '스마트 시티',  era: 4, cost: 2200, req: ['cyber', 'civil'],      col: 4, row: 7, effects: { mult: { income: 0.20 } },                     desc: '세수 +20%' },
+  arsenal:       { id: 'arsenal',       name: '무장 함대',    era: 4, cost: 2200, req: ['carrier', 'precision'], col: 4, row: 8, effects: { tier: 'navy', mult: { navyRange: 1 } },      desc: '함대 티어 +1, 함포 사거리 +1' },
+  space:         { id: 'space',         name: '우주 개발',    era: 4, cost: 2500, req: ['satellites', 'fusion'], col: 4, row: 9, effects: { mult: { science: 0.25, income: 0.10, speed: 0.05 } }, desc: '연구 +25%, 세수 +10%, 속도 +5%' },
 };
+// 미래 기술: 위 기술을 다 배우면(또는 양자 컴퓨터 이후 목표로 정하면) 끝없이 반복 연구한다.
+// 단계마다 세수·연구·공장 +4%, 위신 +300. 비용 = futureBase × futureGrowth^단계.
+const FUTURE = { id: 'future', name: '미래 기술', base: 3000, growth: 1.25, bonus: 0.04, prestige: 300, req: 'quantum' };
 const TECH_ORDER = Object.keys(TECHS);
 
 /* ------------------------------------------------------------------ 상수 */
@@ -228,12 +249,12 @@ const SPY_OPS = {
 
 // ---- 난이도: 컴퓨터 국가에만 적용
 //  econ: 세수·공장·자원·과학·생산력 배수 / aggr: 교리의 공격 비율 배수 / peace: 사람의 화친 제안 수락 가산점
-//  hunt: 사람 국가를 공격 대상으로 삼는 조건 — 'retaliate'(사람이 먼저 자기를 공격 대상으로 정했을 때만),
-//        'strong'(보복 또는 10분 이후 사람보다 1.3배 이상 강할 때), 'always'(언제든)
+//  huntAfter·huntRatio: 이 시각(초) 이후 컴퓨터 국력이 사람의 이 배수 이상이면 사람도 공격 대상으로 삼는다.
+//        사람이 먼저 그 컴퓨터를 공격 대상으로 정했으면 난이도와 상관없이 보복한다.
 const DIFFICULTY = [
-  { id: 'easy',   name: '쉬움',   econ: 0.8,  aggr: 0.5, peace: 25, hunt: 'retaliate', desc: '컴퓨터 경제 80% · 내가 먼저 공격 대상으로 정하지 않으면 컴퓨터도 나를 공격하지 않습니다' },
-  { id: 'normal', name: '보통',   econ: 1.0,  aggr: 0.8, peace: 12, hunt: 'strong',    desc: '컴퓨터 경제 100% · 10분이 지나 나보다 크게(1.3배) 강해지면 공격해 옵니다' },
-  { id: 'hard',   name: '어려움', econ: 1.15, aggr: 1.0, peace: 0,  hunt: 'always',    desc: '컴퓨터 경제 115% · 약한 나라를 언제든 노립니다' },
+  { id: 'easy',   name: '쉬움',   econ: 0.8,  aggr: 0.5,  peace: 25, huntAfter: Infinity, huntRatio: Infinity, desc: '컴퓨터 경제 80% · 내가 먼저 공격 대상으로 정하지 않으면 컴퓨터도 나를 공격하지 않습니다' },
+  { id: 'normal', name: '보통',   econ: 1.0,  aggr: 0.8,  peace: 12, huntAfter: 480, huntRatio: 1.0, desc: '컴퓨터 경제 100% · 8분이 지나 나보다 강한 컴퓨터는 나를 노릴 수 있습니다' },
+  { id: 'hard',   name: '어려움', econ: 1.1,  aggr: 0.9,  peace: 0,  huntAfter: 0,   huntRatio: 0,   desc: '컴퓨터 경제 110% · 약한 나라를 언제든 노립니다' },
 ];
 
 const NATION_COLORS = ['#3b82f6', '#ef4444', '#22c55e', '#f59e0b', '#a855f7', '#06b6d4', '#ec4899', '#84cc16'];
@@ -242,6 +263,6 @@ const NATION_NAMES = ['북방연방', '남부공화국', '동해연합', '서부
 module.exports = {
   TERRAIN, RESOURCES, UNITS, UNIT_ORDER, COUNTER, BUILDINGS, BUILDING_ORDER, MAX_BUILDING_LEVEL,
   MATERIALS, MARKET_IMPACT, MARKET_REVERT, STOCKPILE_CAP, STOCKS, STOCK_ORDER, STOCK_SPREAD,
-  TECHS, TECH_ORDER, RULES, NATION_COLORS, NATION_NAMES,
+  TECHS, TECH_ORDER, FUTURE, RULES, NATION_COLORS, NATION_NAMES,
   PROJECTS, PROJECT_ORDER, SPY_OPS, DIFFICULTY,
 };

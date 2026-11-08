@@ -588,7 +588,8 @@ function renderTech(g, me) {
     box.innerHTML = '<h4>기술 트리</h4><p class="hint">기술을 클릭하면 목표로 정하고, 과학부가 선행 기술부터 차례로 연구합니다. 다시 클릭하면 해제.</p>';
     const wrap = el('div', 'tech-wrap');
     const grid = el('div', 'tech-grid');
-    grid.style.width = 4 * CW + 'px'; grid.style.height = 10 * RH + 20 + 'px';
+    const cols = Math.max(...Object.values(T).map((t) => t.col)) + 1, rows = Math.max(...Object.values(T).map((t) => t.row)) + 1;
+    grid.style.width = cols * CW + 'px'; grid.style.height = rows * RH + 20 + 'px';
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     for (const id of HG.C.TECH_ORDER) {
       const t = T[id];
@@ -602,7 +603,7 @@ function renderTech(g, me) {
       }
     }
     grid.appendChild(svg);
-    ['1시대 · 산업', '2시대 · 정보화', '2시대 · 전자전', '3시대 · 첨단'].forEach((lb, i) => { const e = el('div', 'era-label', lb); e.style.left = i * CW + 'px'; grid.appendChild(e); });
+    ['1시대 · 산업', '2시대 · 정보화', '2.5시대 · 전자전', '3시대 · 첨단', '4시대 · 미래'].forEach((lb, i) => { const e = el('div', 'era-label', lb); e.style.left = i * CW + 'px'; grid.appendChild(e); });
     for (const id of HG.C.TECH_ORDER) {
       const t = T[id];
       const d = el('div', 'tech'); d.dataset.id = id;
@@ -623,14 +624,28 @@ function renderTech(g, me) {
   const cur = ensure(box, 'cur', () => {});
   cur.className = 'cur box';
   const r = me.researching;
+  const F = HG.C.FUTURE;
+  const nameOf = (id) => (id === 'future' ? `${F.name} ${(me.future || 0) + 1}단계` : T[id].name);
   cur.innerHTML = r
-    ? `<div class="title">연구 중: ${T[r.id].name}<span class="sz">${r.p}% · 과학 ${fmt(me.sci)} (+${fmt1(me.stats.science)}/s)</span></div><div class="bar"><i style="width:${r.p}%"></i></div>${me.target ? `<div class="hint" style="margin-top:4px">목표: ${T[me.target].name}</div>` : ''}`
+    ? `<div class="title">연구 중: ${nameOf(r.id)}<span class="sz">${r.p}% · 과학 ${fmt(me.sci)} (+${fmt1(me.stats.science)}/s)</span></div><div class="bar"><i style="width:${r.p}%"></i></div>${me.target ? `<div class="hint" style="margin-top:4px">목표: ${nameOf(me.target)}</div>` : ''}`
     : '<div class="hint">연구할 기술이 없습니다.</div>';
   box.insertBefore(cur, box.querySelector('.tech-wrap'));
+  // 미래 기술 (무한 반복)
+  const fut = ensure(box, 'future-box', () => {});
+  fut.className = 'future-box box';
+  const lv = me.future || 0, fcost = Math.round(F.base * Math.pow(F.growth, lv));
+  const unlocked = me.techs.includes(F.req);
+  fut.innerHTML = `<div class="title">♾ ${F.name} <span class="sz">${lv}단계 보유 · 다음 🔬 ${fmt(fcost)}</span></div><div class="hint">끝없이 반복 연구합니다. 단계마다 세수·연구·공장 +${Math.round(F.bonus * 100)}%, 위신 +${F.prestige}. 다른 기술을 다 배우면 자동으로 이어지고, 「${T[F.req].name}」 이후에는 직접 목표로 정할 수 있습니다.${lv ? ` 지금까지 +${Math.round(F.bonus * 100 * lv)}%.` : ''}</div>`;
+  const fb = el('button', 'chip' + (me.target === 'future' ? ' active' : ''), me.target === 'future' ? '목표 해제' : '미래 기술을 목표로');
+  fb.disabled = !unlocked;
+  if (!unlocked) fb.title = `「${T[F.req].name}」 필요`;
+  fb.onclick = () => HG.emit('setResearch', { tech: me.target === 'future' ? null : 'future' });
+  fut.appendChild(fb);
+  box.insertBefore(fut, box.querySelector('.tech-wrap'));
   // 상태 갱신
   const owned = new Set(me.techs);
   const pathSet = new Set();
-  if (me.target) { const visit = (id) => { if (owned.has(id) || pathSet.has(id)) return; for (const q of T[id].req) visit(q); pathSet.add(id); }; visit(me.target); }
+  if (me.target && me.target !== 'future') { const visit = (id) => { if (owned.has(id) || pathSet.has(id)) return; for (const q of T[id].req) visit(q); pathSet.add(id); }; visit(me.target); }
   for (const d of box.querySelectorAll('.tech')) {
     const id = d.dataset.id, t = T[id];
     const avail = t.req.every((q) => owned.has(q));

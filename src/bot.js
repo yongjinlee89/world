@@ -71,9 +71,9 @@ function think(game, nationId, opts = {}) {
   if (diplomacy) Dip.botThink(game, n.idx);
   // 공격 대상: 적대국 중 가장 약한 이웃
   // 난이도에 따라 사람 국가를 공격 대상으로 삼을지: 쉬움은 보복만, 보통은 보복 또는 크게 강해졌을 때
-  const hunt = game.ai ? game.ai.hunt : 'always';
-  const mayTarget = (o) => o.isBot || hunt === 'always' || game.targets(o, n.idx) // 사람이 나를 공격 대상으로 정했다 → 보복
-    || (hunt === 'strong' && t > 600 && myScore > (o.stats.score || 1) * 1.3);
+  // huntAfter 초 이후, 내 국력이 사람의 huntRatio 배 이상이면 사람도 노린다. 사람이 나를 공격 대상으로 정했으면 언제든 보복.
+  const ai = game.ai || { huntAfter: 0, huntRatio: 0 };
+  const mayTarget = (o) => o.isBot || game.targets(o, n.idx) || (t > ai.huntAfter && myScore >= (o.stats.score || 1) * ai.huntRatio);
   const hostiles = others.filter((o) => Dip.isHostile(game, n.idx, o.idx) && mayTarget(o));
   // 공격 대상은 지도자의 결정 — 사람 국가의 자동 내각(diplomacy=false)은 건드리지 않는다
   if (!diplomacy) { /* 공격 대상 유지 */ }
@@ -131,12 +131,12 @@ function think(game, nationId, opts = {}) {
   if (!n.researchTarget || game.hasTech(n, n.researchTarget)) {
     const coastal = game.cities.some((c) => c.owner === n.idx && game.isCoastal(c));
     const wishlist = P.name === '군국형'
-      ? ['mech', 'artillery', 'naval', 'composite', 'aviation', 'rocket', 'logistics', 'jet', 'missileship', 'atgm', 'mbt3', 'stealth', 'carrier']
+      ? ['mech', 'artillery', 'naval', 'composite', 'aviation', 'rocket', 'logistics', 'jet', 'missileship', 'atgm', 'amphib', 'mlrs', 'mbt3', 'stealth', 'carrier', 'railgun', 'sixthgen', 'hypersonic', 'arsenal']
       : P.name === '기술형'
-        ? ['radio', 'electronics', 'computers', 'mech', 'automation', 'ai', 'aviation', 'radar', 'naval', 'drones', 'missileship']
+        ? ['radio', 'electronics', 'computers', 'mech', 'automation', 'ai', 'aviation', 'radar', 'naval', 'drones', 'robotics', 'banking', 'quantum', 'missileship', 'space', 'orbital']
         : P.name === '금융형'
-          ? ['finance', 'massprod', 'computers', 'naval', 'mech', 'mining', 'petrochem', 'satellites', 'fusion']
-          : ['massprod', 'mining', 'mech', 'artillery', 'naval', 'automation', 'petrochem', 'fortification', 'computers', 'mbt3'];
+          ? ['finance', 'massprod', 'computers', 'naval', 'mech', 'mining', 'petrochem', 'banking', 'civil', 'satellites', 'fusion', 'smartcity', 'quantum']
+          : ['massprod', 'mining', 'mech', 'artillery', 'naval', 'automation', 'petrochem', 'robotics', 'refinery', 'fortification', 'computers', 'mbt3', 'fusion', 'nanofab'];
     const next = wishlist.find((id) => TECHS[id] && !game.hasTech(n, id) && (coastal || !['naval', 'missileship', 'carrier'].includes(id)));
     if (next) n.researchTarget = next;
   }

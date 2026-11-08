@@ -558,4 +558,26 @@ test('난이도: 컴퓨터 경제 배수가 적용되고, 쉬움에서는 사람
   assert.ok(easy.targets(b, 0), '보복');
 });
 
+test('과학: 기술 48개 + 다 배우면 미래 기술을 끝없이 반복 연구한다', () => {
+  const g = mk(2);
+  const n = g.nation('p0');
+  assert.ok(D.TECH_ORDER.length >= 48);
+  assert.ok(!g.setResearchTarget('p0', 'future').ok, '양자 컴퓨터 전에는 미래 기술을 목표로 못 정한다');
+  n.techs = D.TECH_ORDER.slice(); g.refreshMult(n);
+  n.researching = null; n.researchTarget = null;
+  const inc0 = n.mult.income;
+  n.science = 0; n.pots.research = 0;
+  g.ministerResearch(n);
+  assert.strictEqual(n.researching.id, 'future', '다 배우면 자동으로 미래 기술');
+  n.science = g.futureCost(n) + 10;
+  g.ministerResearch(n);
+  assert.strictEqual(n.future, 1);
+  assert.ok(n.mult.income > inc0, '미래 기술은 세수를 올린다');
+  const c1 = g.futureCost(n);
+  assert.ok(c1 > D.FUTURE.base, '단계마다 비싸진다');
+  assert.ok(g.setResearchTarget('p0', 'future').ok);
+  const ps = g.publicState();
+  assert.strictEqual(ps.nations[0].future, 1);
+});
+
 console.log(`${passed} tests passed`);

@@ -113,6 +113,7 @@ class Game {
       decision: null,         // 지도자가 골라야 할 결단 (사람만)
       projectTarget: null,    // 산업 금고로 추진할 국가 프로젝트
       spyReady: 0,            // 다음 첩보 작전 가능 시각
+      future: 0,              // 미래 기술 단계 (무한 반복 연구)
       queue: [],              // 병력 생산 대기열 [{type, city, mission, count, need, done, cost}]
       prodRate: 0,            // 초당 생산력 (공장·병영 규모)
       capitalId: null,
@@ -253,6 +254,9 @@ class Game {
       if (e.tier) tier[e.tier]++;
       if (e.flag) flags[e.flag] = true;
     }
+    // 미래 기술 단계마다 세수·연구·공장 +4%
+    const fl = n.future || 0;
+    if (fl) { m.income += D.FUTURE.bonus * fl; m.science += D.FUTURE.bonus * fl; m.factory += D.FUTURE.bonus * fl; }
     if (this.projects) for (const p of Object.values(this.projects)) {
       if (!p.done || p.owner !== n.idx || !PROJECTS[p.id].effects.mult) continue;
       for (const [k, v] of Object.entries(PROJECTS[p.id].effects.mult)) m[k] += v;
@@ -413,8 +417,12 @@ class Game {
   setResearchTarget(pid, techId) {
     const n = this.nation(pid);
     if (!n || !n.alive) return { ok: false, error: '국가가 없습니다.' };
-    if (techId !== null && !TECHS[techId]) return { ok: false, error: '없는 기술입니다.' };
-    if (techId && this.hasTech(n, techId)) return { ok: false, error: '이미 보유한 기술입니다.' };
+    if (techId === 'future') {
+      if (!this.hasTech(n, D.FUTURE.req)) return { ok: false, error: `미래 기술은 「${TECHS[D.FUTURE.req].name}」 이후 연구할 수 있습니다.` };
+    } else {
+      if (techId !== null && !TECHS[techId]) return { ok: false, error: '없는 기술입니다.' };
+      if (techId && this.hasTech(n, techId)) return { ok: false, error: '이미 보유한 기술입니다.' };
+    }
     n.researchTarget = techId;
     // 진행 중인 연구가 목표 경로 밖이면 바꾼다 (진행도는 보존)
     if (n.researching && techId) {
@@ -550,6 +558,8 @@ class Game {
       if (u.owner === ownerIdx) continue;
       if (!this.nations[u.owner].alive) continue;
       if (!this.hostile(u.owner, ownerIdx)) continue;
+      // 지나가는 부대는 위협이 아니다: 나와 싸우는 사이인 나라의 부대만 센다
+      if (ownerIdx >= 0 && !this.engaged(u.owner, ownerIdx)) continue;
       const d = Math.hypot(u.x - city.x, u.y - city.y);
       if (d >= 10) continue;
       const w = (u.strength / 100) * (UNITS[u.type].cost / 150) / (1 + d * 0.5);
@@ -588,6 +598,14 @@ class Game {
     if (!Dip.isHostile(this, n.idx, c.owner)) return false;
     if (!this.targets(n, c.owner)) return false;
     return true;
+  }
+  // 실제로 싸우는 사이인가: 적대 관계이면서, 어느 한쪽이라도 상대를 공격 대상으로 정했을 때.
+  // 적대여도 서로 노리지 않으면 지나가는 군대끼리 쏘지 않는다 (공격 안 함·쉬움 난이도에서 '지나가다 침공'이 생기지 않게).
+  // 중립(-1)은 언제나 대상 — 병합하러 간 부대와 중립 민병대는 싸운다.
+  engaged(a, b) {
+    if (a < 0 || b < 0) return true;
+    if (!this.hostile(a, b)) return false;
+    return this.targets(this.nations[a], b) || this.targets(this.nations[b], a);
   }
   // 이 나라를 공격 대상으로 삼았는가
   targets(n, idx) {
@@ -827,7 +845,7 @@ class Game {
         if (!this.inBounds(x, y)) continue;
         const arr = grid.get(y * this.W + x);
         if (!arr) continue;
-        for (const v of arr) if (v.owner !== u.owner && this.nations[v.owner].alive && this.hostile(u.owner, v.owner)) out.push(v);
+        for (const v of arr) if (v.owner !== u.owner && this.nations[v.owner].alive && this.engaged(u.owner, v.owner)) out.push(v);
       }
     }
     return out;
@@ -855,8 +873,8 @@ class Game {
       an._fightAt = this.time; dn._fightAt = this.time; // 평화 기념관 등 "교전 중이 아닐 때" 판정용
       const atk = UNITS[u.type].atk * (1 + 0.25 * (an.tier[u.type] - 1)) * (an.mult.atk + this.buff(an, 'atk')) * this.counterMult(u, target);
       let def = UNITS[target.type].def * (1 + 0.25 * (dn.tier[target.type] - 1)) * (dn.mult.def + this.buff(dn, 'def'));
-      if (target.ground && this.isWater(target.tx, target.ty)) def *= 0.5; // 수송선 위에서는 취약하다
-      const atkW = u.ground && this.isWater(u.tx, u.ty) ? 0.5 : 1;   // 수송선 위에서는 제대로 싸우지 못한다
+      if (target.ground && this.isWater(target.tx, target.ty)) def *= dn.flags.amphib ? 0.8 : 0.5; // 수송선 위에서는 취약하다 (상륙작전 기술이면 덜)
+      const atkW = u.ground && this.isWater(u.tx, u.ty) ? (an.flags.amphib ? 0.8 : 0.5) : 1;   // 수송선 위에서는 제대로 싸우지 못한다
       if (!target.flying) def *= this.terrain(target.tx, target.ty).def;
       else def *= 1 + (dn.mult.airDef - 1);
       const d = (atk * atkW / def) * 6 * (u.strength / 100) * dt;
@@ -911,6 +929,8 @@ class Game {
             if (u.owner === c.owner || (c.owner >= 0 && Dip.isAllied(this, u.owner, c.owner))) { if (u.ground && adj) defenders++; continue; }
             if (!this.nations[u.owner].alive) continue;
             if (!this.hostile(u.owner, c.owner)) continue;
+            // 그 도시 주인과 싸우는 사이인 부대만 포격한다 (지나가는 부대, 중립 도시를 노리다 주인이 바뀐 부대는 아님)
+            if (c.owner >= 0 && !this.engaged(u.owner, c.owner)) continue;
             if (Math.max(Math.abs(ox), Math.abs(oy)) > this.unitRange(u)) continue;
             attackers.push(u);
             if (adj) adjacent.push(u);
@@ -1450,6 +1470,7 @@ class Game {
   }
 
   researchPath(n, targetId) {
+    if (targetId === 'future') return ['future'];
     const path = [];
     const visit = (id) => {
       if (this.hasTech(n, id) || path.includes(id)) return;
@@ -1461,6 +1482,12 @@ class Game {
   }
   availableTechs(n) {
     return D.TECH_ORDER.filter((id) => !this.hasTech(n, id) && TECHS[id].req.every((r) => this.hasTech(n, r)));
+  }
+  futureCost(n) {
+    return Math.round(D.FUTURE.base * Math.pow(D.FUTURE.growth, n.future || 0));
+  }
+  techCost(n, id) {
+    return id === 'future' ? this.futureCost(n) : TECHS[id].cost;
   }
   ministerResearch(n) {
     // 연구 예산 → 과학 포인트
@@ -1475,28 +1502,37 @@ class Game {
         const path = this.researchPath(n, n.researchTarget);
         next = path.find((id) => TECHS[id].req.every((r) => this.hasTech(n, r))) || null;
       }
+      if (n.researchTarget === 'future') next = 'future';
       if (!next) {
         // 목표가 없으면 예산 성향에 맞춰 고른다: 군사 예산이 크면 군사 기술, 아니면 경제 기술
         const avail = this.availableTechs(n);
-        if (!avail.length) return;
+        if (!avail.length) avail.push('future'); // 다 배웠으면 미래 기술을 끝없이
         const mil = new Set(['mech', 'artillery', 'aviation', 'composite', 'rocket', 'jet', 'atgm', 'radar', 'manpads', 'mbt3', 'precision', 'stealth', 'drones', 'fortification', 'logistics']);
         const wantMil = n.budget.military >= 30;
         avail.sort((a, b) => {
-          const sa = TECHS[a].cost + (mil.has(a) === wantMil ? -200 : 0);
-          const sb = TECHS[b].cost + (mil.has(b) === wantMil ? -200 : 0);
+          const sa = this.techCost(n, a) + (mil.has(a) === wantMil ? -200 : 0);
+          const sb = this.techCost(n, b) + (mil.has(b) === wantMil ? -200 : 0);
           return sa - sb;
         });
         next = avail[0];
       }
-      if (n.researchTarget && this.hasTech(n, n.researchTarget)) n.researchTarget = null;
+      if (n.researchTarget && n.researchTarget !== 'future' && this.hasTech(n, n.researchTarget)) n.researchTarget = null;
       const saved = (n._saved && n._saved[next]) || 0;
       n.researching = { id: next, progress: saved };
     }
     const r = n.researching;
-    const cost = TECHS[r.id].cost;
+    const cost = this.techCost(n, r.id);
     const take = Math.min(n.science, cost - r.progress);
     r.progress += take;
     n.science -= take;
+    if (r.progress >= cost && r.id === 'future') {
+      n.future = (n.future || 0) + 1;
+      this.refreshMult(n);
+      this.pushLog(`${n.title}이(가) 「미래 기술 ${n.future}단계」를 완성했습니다 (세수·연구·공장 +${Math.round(D.FUTURE.bonus * 100 * n.future)}%).`, n.idx);
+      n.researching = null;
+      if (n.researchTarget === 'future') n.researchTarget = null;
+      return;
+    }
     if (r.progress >= cost) {
       n.techs.push(r.id);
       this.refreshMult(n);
@@ -1673,6 +1709,7 @@ class Game {
     // 위신: 완성한 프로젝트와 업적
     for (const p of Object.values(this.projects)) if (p.done && p.owner === n.idx) w += PROJECTS[p.id].cost * RULES.projectPrestige + (PROJECTS[p.id].effects.prestige || 0);
     w += n.ach.length * RULES.achPrestige;
+    w += (n.future || 0) * D.FUTURE.prestige;
     return w;
   }
   updateStats(n) {
@@ -1695,7 +1732,7 @@ class Game {
     this.tickProduction(dt);
     for (const n of this.nations) if (n.buffs.length) n.buffs = n.buffs.filter((b) => b.until > this.time);
     // 피로도 회복 — 평화 기념관의 회복 보너스는 30초 이상 교전이 없을 때만 (전쟁을 편하게 해 주는 장치가 아니다)
-    for (const n of this.nations) if (n.weariness > 0) n.weariness = Math.max(0, n.weariness - RULES.wearinessDecay * (1 + (this.time - (n._fightAt || -999) > 30 ? this.projectBonus(n, 'wearinessDecay') : 0)) * dt);
+    for (const n of this.nations) if (n.weariness > 0) n.weariness = Math.max(0, n.weariness - RULES.wearinessDecay * (1 + (n.flags.civil ? 0.5 : 0) + (this.time - (n._fightAt || -999) > 30 ? this.projectBonus(n, 'wearinessDecay') : 0)) * dt);
     this._histClock += dt;
     if (this._histClock >= RULES.histEvery) {
       this._histClock = 0;
@@ -1784,7 +1821,7 @@ class Game {
         nations: this.nations.map((n) => ({
           id: n.id, name: n.name, title: n.title, color: n.color, idx: n.idx, alive: n.alive, isBot: n.isBot,
           cash: Math.round(n.cash), sci: Math.round(n.science), capital: n.capitalId,
-          techs: n.techs, researching: n.researching ? { id: n.researching.id, p: Math.round((n.researching.progress / TECHS[n.researching.id].cost) * 100) } : null,
+          techs: n.techs, future: n.future || 0, researching: n.researching ? { id: n.researching.id, p: Math.round((n.researching.progress / this.techCost(n, n.researching.id)) * 100) } : null,
           target: n.researchTarget,
           budget: n.budget, doctrine: n.doctrine, attackTarget: n.attackTarget, industry: n.industry, portfolio: n.portfolio, liquidate: n.liquidate, autoReserve: n.autoReserve, autoCabinet: n.autoCabinet,
           weariness: Math.round(n.weariness), nukeReady: Math.round(n.nukeReady), spyReady: Math.round(n.spyReady),
@@ -1845,7 +1882,7 @@ class Game {
 
   static constants() {
     return {
-      TERRAIN, UNITS, UNIT_ORDER, COUNTER, BUILDINGS, BUILDING_ORDER, MAX_BUILDING_LEVEL, MATERIALS, STOCKS, STOCK_ORDER, TECHS, TECH_ORDER: D.TECH_ORDER, RULES,
+      TERRAIN, UNITS, UNIT_ORDER, COUNTER, BUILDINGS, BUILDING_ORDER, MAX_BUILDING_LEVEL, MATERIALS, STOCKS, STOCK_ORDER, TECHS, TECH_ORDER: D.TECH_ORDER, FUTURE: D.FUTURE, RULES,
       RESOURCES: D.RESOURCES, PROJECTS, PROJECT_ORDER, SPY_OPS, ACHIEVEMENTS: Ach.publicList(), DIFFICULTY: D.DIFFICULTY,
       RESOLUTIONS: Object.fromEntries(Object.values(Council.RESOLUTIONS).map((r) => [r.id, { name: r.name, desc: r.desc }])),
     };
