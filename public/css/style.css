@@ -311,3 +311,10 @@ button.vote.active { border-color: var(--accent); color: var(--accent); }
 .box.prod { margin-top: 8px; }
 .qrow { display: grid; grid-template-columns: 1fr 90px auto; gap: 8px; align-items: center; font-size: 12px; margin: 4px 0; }
 .qrow .bar { height: 6px; }
+/* 아주 좁은 휴대폰(400px 이하): 배속 버튼이 5개라 여백을 줄여 상단바 한 줄에 넣는다 */
+@media (max-width: 400px) {
+  #topbar { gap: 4px 4px; padding-left: 6px; padding-right: 6px; }
+  .speed button { padding: 5px 5px; font-size: 10.5px; }
+  .icon-btn { padding: 4px 6px; font-size: 13px; }
+  #tb-time { font-size: 12px; }
+}

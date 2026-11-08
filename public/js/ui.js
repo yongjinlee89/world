@@ -144,7 +144,7 @@ function renderTopbar(g) {
     $('#tb-title').textContent = me.title + (me.alive ? '' : ' (멸망)');
     // 재정 스냅샷은 3초에 한 번 오므로, 그 사이는 순수입으로 이어 계산해 보여 준다.
     // 표시는 "가용 현금"(금고에 배정되지 않은 비축) — 금고에 쌓인 돈은 장관이 쓰기로 정해진 돈이다.
-    const ahead = Math.max(0, Math.min(4, g.t - (g.econT || g.t)));
+    const ahead = Math.max(0, Math.min(4 * Math.max(1, S.speed), g.t - (g.econT || g.t))); // 배속이 높으면 재정 스냅샷 사이 게임 시간이 길다
     const earmarked = me.pots.industry + me.pots.research + me.pots.military + me.pots.finance;
     const total = me.cash + me.stats.net * ahead;
     $('#tb-cash').textContent = fmt(total - earmarked);

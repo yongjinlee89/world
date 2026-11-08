@@ -38,6 +38,8 @@ test('시작·루프·속도·종료·재시작', () => {
   r.stopLoop();
   assert.ok(r.setSpeed('a', 3).ok);
   assert.ok(!r.setSpeed('a', 7).ok);
+  assert.ok(r.setSpeed('a', 10).ok, '테스트용 10배속');
+  assert.ok(r.setSpeed('a', 3).ok);
   for (let i = 0; i < 8; i++) r.step();
   assert.ok(r.game.time > 5, '3배속이면 8틱에 6초');
   const res = r.gameAction('a', (g) => g.setBudget('a', { industry: 1, research: 1, military: 1, finance: 1, reserve: 1 }));

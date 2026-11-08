@@ -160,7 +160,7 @@ class Room {
   setSpeed(playerId, speed) {
     if (playerId !== this.hostId) return { ok: false, error: '방장만 속도를 바꿀 수 있습니다.' };
     const s = Number(speed);
-    if (![0, 1, 2, 3].includes(s)) return { ok: false, error: '잘못된 속도입니다.' };
+    if (![0, 1, 2, 3, 10].includes(s)) return { ok: false, error: '잘못된 속도입니다.' }; // 10× 는 테스트용
     this.speed = s;
     this.touch();
     return { ok: true };
