@@ -1752,8 +1752,8 @@ class Game {
           budget: n.budget, doctrine: n.doctrine, attackTarget: n.attackTarget, industry: n.industry, portfolio: n.portfolio, liquidate: n.liquidate, autoReserve: n.autoReserve, autoCabinet: n.autoCabinet,
           weariness: Math.round(n.weariness), nukeReady: Math.round(n.nukeReady), spyReady: Math.round(n.spyReady),
           ach: n.ach, project: n.projectTarget,
-          buffs: n.buffs.map((b) => ({ k: b.k, v: Math.round(b.v * 100), n: b.name, l: Math.round(b.until - this.time) })),
-          decision: n.decision ? { id: n.decision.id, name: n.decision.name, text: n.decision.text, left: Math.round(n.decision.left), options: n.decision.options } : null,
+          buffs: n.buffs.map((b) => ({ k: b.k, v: Math.round(b.v * 100), n: b.name, u: Math.round(b.until) })),
+          decision: n.decision ? { id: n.decision.id, name: n.decision.name, text: n.decision.text, u: Math.round(this.time + n.decision.left), options: n.decision.options } : null,
           pots: { industry: Math.round(n.pots.industry), research: Math.round(n.pots.research), military: Math.round(n.pots.military), finance: Math.round(n.pots.finance) },
           stocks: n.stocks, stockCost: Object.fromEntries(STOCK_ORDER.map((k) => [k, Math.round(n.stockCost[k])])),
           mats: { iron: Math.round(n.mats.iron), oil: Math.round(n.mats.oil), grain: Math.round(n.mats.grain) },
@@ -1778,19 +1778,18 @@ class Game {
       t: Math.round(this.time),
       dur: this.duration,
       victory: this.victory,
-      grace: Math.max(0, Math.round(RULES.graceSeconds - this.time)),
       ended: this.ended,
       winner: this.winner,
       endReason: this.endReason || null,
       ranking: this.ranking,
       hist: this.ended ? this.hist : null, // 결과 그래프 — 종료 때만 보낸다
-      event: this.event ? { name: this.event.name, left: Math.round(this.event.left) } : null,
+      event: this.event ? { name: this.event.name, u: Math.round(this.time + this.event.left) } : null, // 남은 초는 클라이언트가 u - t 로 계산
       map: this._mapState || (this._mapState = { w: this.W, h: this.H, seed: this.map.seed || 0, tiles: this.map.tiles, res: this.map.resources.map((r) => r || 0) }),
       terr: this.territory,
       dip: Dip.publicState(this),
       council: Council.publicState(this),
       news: this.news,
-      projects: Object.fromEntries(Object.values(this.projects).map((p) => [p.id, { o: p.owner, d: p.done ? 1 : 0, c: p.city, prog: Object.fromEntries(Object.entries(p.prog).map(([k, v]) => [k, Math.round(v)])) }])),
+      projects: Object.fromEntries(Object.values(this.projects).map((p) => [p.id, { o: p.owner, d: p.done ? 1 : 0, c: p.city, prog: Object.fromEntries(Object.entries(p.prog).map(([k, v]) => [k, Math.round(v / 10) * 10])) }])), // 10 단위 — 2초마다 바뀌는 값을 덜 보낸다
       econT: ec.econT,
       nations: ec.nations,
       cities: this.cities.map((c) => ({

@@ -142,8 +142,8 @@ function worldBuff(game, k) {
 function publicState(game) {
   const c = game.council;
   return {
-    vote: c ? { id: c.id, name: RESOLUTIONS[c.id].name, desc: RESOLUTIONS[c.id].desc, left: Math.round(c.left), votes: c.votes } : null,
-    active: game.world.buffs.map((b) => ({ name: b.name, left: Math.round(b.until - game.time) })),
+    vote: c ? { id: c.id, name: RESOLUTIONS[c.id].name, desc: RESOLUTIONS[c.id].desc, u: Math.round(game.time + c.left), votes: c.votes } : null,
+    active: game.world.buffs.map((b) => ({ name: b.name, u: Math.round(b.until) })),
     last: game.lastCouncil || null,
   };
 }

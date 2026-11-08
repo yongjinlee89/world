@@ -146,10 +146,11 @@ function renderTopbar(g) {
   $('#time-fill').style.width = Math.min(100, (g.t / g.dur) * 100) + '%';
   const ev = $('#tb-event');
   const bits = [];
-  if (g.grace > 0) bits.push(`🛡 보호 ${mmss(g.grace)}`);
+  const grace = HG.C.RULES.graceSeconds - g.t;
+  if (grace > 0) bits.push(`🛡 보호 ${mmss(grace)}`);
   if (me && me.weariness >= 10) bits.push(`😩 피로 ${me.weariness}`);
   if (me && me.stats.trade > 0) bits.push(`🤝 교역 +${me.stats.trade}%`);
-  if (g.event) bits.push(`⚡ ${g.event.name} (${g.event.left}s)`);
+  if (g.event) bits.push(`⚡ ${g.event.name} (${Math.max(0, g.event.u - g.t)}s)`);
   if (bits.length) { ev.textContent = bits.join(' · '); ev.classList.remove('hidden'); ev.title = '보호 기간: 도시 점령 불가·민병대 2배 / 피로도: 세수 감소, 40 이상이면 인구 정체 / 교역: 불가침·동맹국당 세수 +4~8%'; } else ev.classList.add('hidden');
   // 긴급 경보: 위협이 새로 커지면 토스트 + 원클릭 특별 집행
   if (me && me.threat) {
@@ -205,8 +206,9 @@ function renderDecision(g, me) {
     box.appendChild(el('div', 'hint', '시간이 지나면 기본 선택(첫 번째)이 적용됩니다. 자동 내각을 켜 두면 내각이 대신 고릅니다.'));
     box.classList.remove('hidden');
   }
-  box.querySelector('.left').textContent = `${d.left}초`;
-  box.querySelector('.timer i').style.width = Math.max(0, Math.min(100, (d.left / HG.C.RULES.decisionSeconds) * 100)) + '%';
+  const left = Math.max(0, d.u - g.t);
+  box.querySelector('.left').textContent = `${left}초`;
+  box.querySelector('.timer i').style.width = Math.max(0, Math.min(100, (left / HG.C.RULES.decisionSeconds) * 100)) + '%';
 }
 
 /* ---------------------------------------------------------------- 탭 */
@@ -304,7 +306,7 @@ function renderCouncil(box, g, me) {
     const mine = v.votes[me.idx] || 0;
     let yes = 0, no = 0;
     for (const n of g.nations) { const x = v.votes[n.idx] || 0; if (x > 0) yes++; else if (x < 0) no++; }
-    d.innerHTML = `<div class="title">🏛 세계 의회 투표<span class="sz">${v.left}초 남음 · 찬성 ${yes} / 반대 ${no}</span></div><div><b>${v.name}</b></div><div class="hint">${v.desc}</div>`;
+    d.innerHTML = `<div class="title">🏛 세계 의회 투표<span class="sz">${Math.max(0, v.u - g.t)}초 남음 · 찬성 ${yes} / 반대 ${no}</span></div><div><b>${v.name}</b></div><div class="hint">${v.desc}</div>`;
     const votes = el('div', 'votes');
     for (const n of g.nations) { if (!n.alive) continue; const x = v.votes[n.idx] || 0; const sp = el('span', x > 0 ? 'y' : x < 0 ? 'n' : '', `${n.title} ${x > 0 ? '찬성' : x < 0 ? '반대' : '기권'}`); votes.appendChild(sp); }
     d.appendChild(votes);
@@ -313,7 +315,7 @@ function renderCouncil(box, g, me) {
     d.appendChild(row);
     d.appendChild(el('div', 'hint', '국가당 1표 (세계 박람회 보유국 +1). 찬성이 많으면 가결되어 모두에게 적용됩니다.'));
   } else {
-    const active = (C.active || []).map((a) => `${a.name} (${a.left}s)`);
+    const active = (C.active || []).map((a) => `${a.name} (${Math.max(0, a.u - g.t)}s)`);
     const last = C.last ? `최근: 「${(HG.C.RESOLUTIONS[C.last.id] || {}).name}」 ${C.last.passed ? '가결' : '부결'} (${C.last.yes}:${C.last.no})` : '아직 결의안이 없었습니다';
     d.innerHTML = `<div class="title">🏛 세계 의회<span class="sz">${HG.mmss(HG.C.RULES.councilEvery)}마다 결의안</span></div><div class="hint">${active.length ? '발효 중: ' + active.join(' · ') : last}</div>`;
   }
@@ -427,8 +429,8 @@ function renderPolicy(g, me) {
   const bf = ensure(box, 'buffs', () => {});
   bf.innerHTML = '';
   const BUFF_NAME = { income: '세수', factory: '공장', resource: '자원', science: '연구', upkeep: '유지비', dividend: '배당', atk: '공격', def: '방어' };
-  for (const b of me.buffs || []) { const good = (b.k === 'upkeep') ? b.v < 0 : b.v > 0; bf.appendChild(el('span', 'buff ' + (good ? 'up' : 'down'), `${b.n}: ${BUFF_NAME[b.k] || b.k} ${b.v > 0 ? '+' : ''}${b.v}% (${b.l}s)`)); }
-  for (const a of (g.council && g.council.active) || []) bf.appendChild(el('span', 'buff', `🏛 ${a.name} (${a.left}s)`));
+  for (const b of me.buffs || []) { const good = (b.k === 'upkeep') ? b.v < 0 : b.v > 0; bf.appendChild(el('span', 'buff ' + (good ? 'up' : 'down'), `${b.n}: ${BUFF_NAME[b.k] || b.k} ${b.v > 0 ? '+' : ''}${b.v}% (${Math.max(0, b.u - g.t)}s)`)); }
+  for (const a of (g.council && g.council.active) || []) bf.appendChild(el('span', 'buff', `🏛 ${a.name} (${Math.max(0, a.u - g.t)}s)`));
   const war = ensure(box, 'warbox', (n) => { n.className = 'warbox hint'; });
   war.innerHTML = `전쟁 피로도 <b>${me.weariness}</b> (세수 −${me.stats.weary}%) · 교역 보너스 <b>+${me.stats.trade}%</b> · 격멸 ${me.stats.kills} / 손실 ${me.stats.losses}`;
   const inc = ensure(box, 'box', (n) => {});

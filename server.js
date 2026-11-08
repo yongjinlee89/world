@@ -22,10 +22,20 @@ const io = new Server(server, {
 });
 
 app.use(compression());
+// 정적 자산 캐시: index.html 은 매번 재검증(no-cache, ETag 로 304), js/css 는 ?v=빌드 버전을 붙여 1년 immutable 캐시.
+// 재접속·새로고침 때 수 KB 짜리 index.html 만 다시 받는다. 새로 배포하면 버전이 바뀌어 곧바로 갱신된다.
+const BUILD = process.env.RENDER_GIT_COMMIT ? process.env.RENDER_GIT_COMMIT.slice(0, 10) : String(Date.now()).slice(-8);
+const fs = require('fs');
+const INDEX = fs.readFileSync(path.join(__dirname, 'public', 'index.html'), 'utf8').replace(/(href|src)="(\/?(?:css|js)\/[^"?]+)(?:\?[^"]*)?"/g, `$1="$2?v=${BUILD}"`);
+app.get(['/', '/index.html'], (_req, res) => { res.setHeader('Cache-Control', 'no-cache'); res.type('html').send(INDEX); });
 app.use(express.static(path.join(__dirname, 'public'), {
   etag: true,
   lastModified: true,
-  setHeaders: (res) => res.setHeader('Cache-Control', 'no-cache'),
+  index: false,
+  setHeaders: (res, filePath, _stat) => {
+    const versioned = res.req && res.req.query && res.req.query.v;
+    res.setHeader('Cache-Control', versioned ? 'public, max-age=31536000, immutable' : 'no-cache');
+  },
 }));
 app.get('/healthz', (_req, res) => {
   let playing = 0, humans = 0;
