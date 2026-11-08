@@ -318,3 +318,11 @@ button.vote.active { border-color: var(--accent); color: var(--accent); }
   .icon-btn { padding: 4px 6px; font-size: 13px; }
   #tb-time { font-size: 12px; }
 }
+
+/* 대기실: 참가 국가 머리줄 (컴퓨터 추가·빼기 버튼이 목록 위에 고정) */
+.lobby-players-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.lobby-players-head .lobby-actions { margin: 0 0 0 auto; }
+.lobby-players-head button { padding: 6px 10px; font-size: 12px; }
+.setting-desc { margin: -2px 0 2px 92px; }
+@media (max-width: 600px) { .setting-desc { margin-left: 0; } }
+.lobby-card { scrollbar-gutter: stable; } /* 목록이 길어져 스크롤바가 생겨도 버튼이 옆으로 밀리지 않게 */

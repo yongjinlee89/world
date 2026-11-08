@@ -63,13 +63,18 @@ function think(game, nationId, opts = {}) {
   if (ratio > 1.25 && unitCount >= 6 && t > 240) { attack += 25 + P.aggression; defend -= 10; }
   if (ratio < 0.7) { defend += 15; attack -= 15; }
   attack += P.aggression * 0.5;
+  attack = Math.max(0, attack) * (game.ai ? game.ai.aggr : 1); // 난이도: 공격 성향
   n.doctrine = clampPct({ defend, expand, attack });
   // 전쟁에 지쳤으면 공격 대신 수비·내정으로 (전쟁은 돈이 안 된다)
   if (n.weariness > 60) { n.doctrine = clampPct({ defend: n.doctrine.defend + 30, expand: n.doctrine.expand, attack: Math.max(0, n.doctrine.attack - 25) }); }
   // 외교: 화친·동맹·배신 판단
   if (diplomacy) Dip.botThink(game, n.idx);
   // 공격 대상: 적대국 중 가장 약한 이웃
-  const hostiles = others.filter((o) => Dip.isHostile(game, n.idx, o.idx));
+  // 난이도에 따라 사람 국가를 공격 대상으로 삼을지: 쉬움은 보복만, 보통은 보복 또는 크게 강해졌을 때
+  const hunt = game.ai ? game.ai.hunt : 'always';
+  const mayTarget = (o) => o.isBot || hunt === 'always' || game.targets(o, n.idx) // 사람이 나를 공격 대상으로 정했다 → 보복
+    || (hunt === 'strong' && t > 600 && myScore > (o.stats.score || 1) * 1.3);
+  const hostiles = others.filter((o) => Dip.isHostile(game, n.idx, o.idx) && mayTarget(o));
   // 공격 대상은 지도자의 결정 — 사람 국가의 자동 내각(diplomacy=false)은 건드리지 않는다
   if (!diplomacy) { /* 공격 대상 유지 */ }
   else if (hostiles.length) {
@@ -82,11 +87,13 @@ function think(game, nationId, opts = {}) {
       const s = (o.stats.score || 1) / myScore * 40 + d * 0.5;
       if (s < bestS) { bestS = s; best = o.idx; }
     }
-    n.attackTarget = ratio > 0.9 ? best : 'any';
+    // 고른 상대 하나, 아니면 공격해도 되는 적대국들 (사람을 빼야 하면 'any' 대신 목록으로)
+    const allHostile = others.filter((o) => Dip.isHostile(game, n.idx, o.idx)).length === hostiles.length;
+    n.attackTarget = ratio > 0.9 && best !== 'any' ? [best] : (allHostile ? 'any' : hostiles.map((o) => o.idx));
   } else {
-    n.attackTarget = 'any';
+    n.attackTarget = others.some((o) => Dip.isHostile(game, n.idx, o.idx)) ? 'none' : 'any';
     // 적이 아무도 없고 충분히 강하면 가장 약하고 신뢰 낮은 상대에게 적대 선언 (군국형이 더 쉽게)
-    const weakest = others.slice().sort((a, b) => (a.stats.score || 1) - (b.stats.score || 1))[0];
+    const weakest = others.filter(mayTarget).sort((a, b) => (a.stats.score || 1) - (b.stats.score || 1))[0];
     if (diplomacy && weakest && t > 240 && n.weariness < 30 && ratio > (P.name === '군국형' ? 1.1 : 1.5)) {
       const r = Dip.relOf(game, n.idx, weakest.idx);
       if (r && r.trust < 50 && Math.random() < 0.2) Dip.declareWar(game, n.idx, weakest.idx);

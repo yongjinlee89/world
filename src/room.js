@@ -13,12 +13,13 @@ const BROADCAST_EVERY = 4; // 250ms × 4 = 1초마다 화면 갱신 (행동은 �
 const ECON_EVERY = 3;
 const BOT_THINK_MS = 6000;
 
-const DEFAULT_SETTINGS = { startCash: 3000, duration: 1200, mapSize: 1, victory: 0 };
+const DEFAULT_SETTINGS = { startCash: 3000, duration: 1200, mapSize: 1, victory: 0, difficulty: 1 };
 const SETTING_CHOICES = {
   startCash: [2000, 3000, 5000],
   duration: [900, 1200, 1800, 0], // 0 = 무제한 (방장이 '지금 끝내기'로 종료하거나 정복·경제 승리)
   mapSize: [0, 1, 2], // small / normal / large
   victory: [0, 1, 2], // score(시간 종료 국력) / conquest(최후 생존) / economic(국력 50,000 선착)
+  difficulty: [0, 1, 2], // 쉬움 / 보통 / 어려움 (컴퓨터 국가에만 적용)
 };
 const MAP_SIZES = ['small', 'normal', 'large'];
 const VICTORIES = ['score', 'conquest', 'economic'];

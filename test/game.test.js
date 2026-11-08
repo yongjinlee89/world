@@ -539,4 +539,23 @@ test('공격 대상: 고른 나라의 도시만 공격하고, 조약을 맺으�
   assert.strictEqual(JSON.stringify(me.attackTarget), before);
 });
 
+test('난이도: 컴퓨터 경제 배수가 적용되고, 쉬움에서는 사람이 먼저 공격하지 않으면 컴퓨터가 사람을 공격 대상으로 삼지 않는다', () => {
+  const { think } = require('../src/bot');
+  const easy = mk(3, { difficulty: 0 }), hard = mk(3, { difficulty: 2 });
+  assert.strictEqual(easy.ai.id, 'easy'); assert.strictEqual(hard.ai.id, 'hard');
+  assert.strictEqual(mk(2).ai.id, 'normal', '기본은 보통');
+  // 컴퓨터 생산력은 난이도 배수, 사람은 그대로
+  assert.ok(easy.prodRate(easy.nation('p1')) < hard.prodRate(hard.nation('p1')));
+  assert.strictEqual(easy.prodRate(easy.nation('p0')), hard.prodRate(hard.nation('p0')));
+  // 쉬움: 사람이 공격 대상을 정하지 않았으면 봇의 공격 대상에 사람이 없다
+  const b = easy.nation('p1');
+  easy.time = 400;
+  for (let i = 0; i < 5; i++) think(easy, 'p1');
+  assert.ok(!easy.targets(b, 0), '사람을 노리지 않는다');
+  // 사람이 그 봇을 공격 대상으로 정하면 보복 대상이 된다
+  assert.ok(easy.setDoctrine('p0', { ...easy.nation('p0').doctrine, target: [1] }).ok);
+  think(easy, 'p1');
+  assert.ok(easy.targets(b, 0), '보복');
+});
+
 console.log(`${passed} tests passed`);

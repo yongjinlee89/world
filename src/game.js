@@ -69,6 +69,7 @@ class Game {
     this._eventClock = 60 + Math.random() * 60;
     this.event = null;
     this.victory = ['score', 'conquest', 'economic'].includes(settings.victory) ? settings.victory : 'score';
+    this.ai = D.DIFFICULTY[Number(settings.difficulty)] || D.DIFFICULTY[1]; // 컴퓨터 난이도
     this.hist = { t: [], s: [] }; // 국력 추이 (결과 그래프용, 종료 시에만 전송)
     this._histClock = 0;
 
@@ -1015,7 +1016,8 @@ class Game {
       const m = n.mult;
       let income = 0, sales = 0, expense = 0, science = RULES.scienceBase;
       let tiles = 0;
-      const bFactory = 1 + this.buff(n, 'factory'), bResource = 1 + this.buff(n, 'resource'), bScience = 1 + this.buff(n, 'science');
+      const ai = n.isBot ? this.ai.econ : 1; // 난이도: 컴퓨터 경제 배수
+      const bFactory = (1 + this.buff(n, 'factory')) * ai, bResource = (1 + this.buff(n, 'resource')) * ai, bScience = (1 + this.buff(n, 'science')) * ai;
       for (let i = 0; i < this.territory.length; i++) if (this.territory[i] === n.idx) tiles++;
       income += tiles * RULES.tileIncome;
       let grainNeed = 0, grainOut = 0;
@@ -1108,7 +1110,7 @@ class Game {
       trade = trade * (1 + Council.worldBuff(this, 'tradeMult')) + this.projectBonus(n, 'trade');
       const weary = 1 - RULES.wearinessIncomeMax * (n.weariness / 100);
       n.stats.trade = trade; n.stats.weary = weary;
-      income *= m.income * (1 + this.buff(n, 'income')) * admin * (1 + trade) * weary;
+      income *= m.income * (1 + this.buff(n, 'income')) * admin * (1 + trade) * weary * ai;
       const net = income + sales + dividend - expense;
       n.cash += (income + dividend - expense) * dt;
       // 예산 분배: 흑자분만 각 부처 금고에 쌓인다 (비축 비율은 현금으로 남는다)
@@ -1579,7 +1581,7 @@ class Game {
       if (c.owner !== n.idx || c.unrest > 0) continue;
       f += c.b.factory; b += c.b.barracks;
     }
-    return RULES.prodBase + f * RULES.prodPerFactory * n.mult.factory + b * RULES.prodPerBarracks;
+    return (RULES.prodBase + f * RULES.prodPerFactory * n.mult.factory + b * RULES.prodPerBarracks) * (n.isBot ? this.ai.econ : 1);
   }
   tickProduction(dt) {
     for (const n of this.nations) {
@@ -1813,6 +1815,7 @@ class Game {
     return {
       t: Math.round(this.time),
       dur: this.duration,
+      diff: this.ai.id,
       victory: this.victory,
       ended: this.ended,
       winner: this.winner,
@@ -1843,7 +1846,7 @@ class Game {
   static constants() {
     return {
       TERRAIN, UNITS, UNIT_ORDER, COUNTER, BUILDINGS, BUILDING_ORDER, MAX_BUILDING_LEVEL, MATERIALS, STOCKS, STOCK_ORDER, TECHS, TECH_ORDER: D.TECH_ORDER, RULES,
-      RESOURCES: D.RESOURCES, PROJECTS, PROJECT_ORDER, SPY_OPS, ACHIEVEMENTS: Ach.publicList(),
+      RESOURCES: D.RESOURCES, PROJECTS, PROJECT_ORDER, SPY_OPS, ACHIEVEMENTS: Ach.publicList(), DIFFICULTY: D.DIFFICULTY,
       RESOLUTIONS: Object.fromEntries(Object.values(Council.RESOLUTIONS).map((r) => [r.id, { name: r.name, desc: r.desc }])),
     };
   }

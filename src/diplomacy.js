@@ -138,6 +138,8 @@ function botScore(game, me, other, kind) {
   // 성향
   const P = M.personality || '';
   if (P === '군국형') score -= 12; else if (P === '산업형' || P === '금융형') score += 8;
+  // 난이도: 쉬울수록 사람의 화친 제안을 잘 받아 준다
+  if (!O.isBot && game.ai) score += game.ai.peace;
   if (kind === 'ally') {
     score -= 15;
     if (r.trust < TRUST_ALLY_MIN) return 0;

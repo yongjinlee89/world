@@ -70,6 +70,9 @@ HG.renderVoice = () => {
 function renderLobby() {
   const S = HG.S;
   $('#lobby-room-code').textContent = '#' + S.roomId;
+  $('#lobby-count').textContent = `참가 국가 ${S.roomPlayers.length} / ${S.maxPlayers}`;
+  $('#lobby-add-bot').disabled = S.roomPlayers.length >= S.maxPlayers;
+  $('#lobby-remove-bot').disabled = !S.roomPlayers.some((p) => p.isBot);
   const ul = $('#lobby-players');
   ul.innerHTML = '';
   S.roomPlayers.forEach((p, i) => {
@@ -89,8 +92,8 @@ function renderLobby() {
   const isHost = HG.isHost();
   const st = $('#lobby-settings');
   st.innerHTML = '';
-  const labels = { startCash: '시작 자금', duration: '제한 시간', mapSize: '지도 크기', victory: '승리 조건' };
-  const fmtV = { startCash: (v) => fmt(v), duration: (v) => (v ? Math.round(v / 60) + '분' : '무제한'), mapSize: (v) => ['작게', '보통', '크게'][v], victory: (v) => ['시간 종료 국력', '최후 생존', '경제(국력 5만)'][v] };
+  const labels = { startCash: '시작 자금', duration: '제한 시간', mapSize: '지도 크기', victory: '승리 조건', difficulty: '난이도' };
+  const fmtV = { startCash: (v) => fmt(v), duration: (v) => (v ? Math.round(v / 60) + '분' : '무제한'), mapSize: (v) => ['작게', '보통', '크게'][v], victory: (v) => ['시간 종료 국력', '최후 생존', '경제(국력 5만)'][v], difficulty: (v) => ['쉬움', '보통', '어려움'][v] };
   for (const [key, choices] of Object.entries(S.settingChoices)) {
     const row = el('div', 'setting');
     row.appendChild(el('span', 'name', labels[key] || key));
@@ -101,6 +104,10 @@ function renderLobby() {
       row.appendChild(b);
     }
     st.appendChild(row);
+    if (key === 'difficulty' && HG.C && HG.C.DIFFICULTY) {
+      const d = HG.C.DIFFICULTY[S.settings.difficulty];
+      if (d) st.appendChild(el('div', 'hint setting-desc', d.desc));
+    }
   }
   $('#lobby-bot-actions').classList.toggle('hidden', !isHost);
   $('#lobby-start').disabled = !isHost;

@@ -226,6 +226,16 @@ const SPY_OPS = {
   incite:   { id: 'incite',   name: '선동 공작',     icon: '📢', cost: 500, desc: '대상 전쟁 피로도 +12, 지방 도시 하나에 40초 소요 사태' },
 };
 
+// ---- 난이도: 컴퓨터 국가에만 적용
+//  econ: 세수·공장·자원·과학·생산력 배수 / aggr: 교리의 공격 비율 배수 / peace: 사람의 화친 제안 수락 가산점
+//  hunt: 사람 국가를 공격 대상으로 삼는 조건 — 'retaliate'(사람이 먼저 자기를 공격 대상으로 정했을 때만),
+//        'strong'(보복 또는 10분 이후 사람보다 1.3배 이상 강할 때), 'always'(언제든)
+const DIFFICULTY = [
+  { id: 'easy',   name: '쉬움',   econ: 0.8,  aggr: 0.5, peace: 25, hunt: 'retaliate', desc: '컴퓨터 경제 80% · 내가 먼저 공격 대상으로 정하지 않으면 컴퓨터도 나를 공격하지 않습니다' },
+  { id: 'normal', name: '보통',   econ: 1.0,  aggr: 0.8, peace: 12, hunt: 'strong',    desc: '컴퓨터 경제 100% · 10분이 지나 나보다 크게(1.3배) 강해지면 공격해 옵니다' },
+  { id: 'hard',   name: '어려움', econ: 1.15, aggr: 1.0, peace: 0,  hunt: 'always',    desc: '컴퓨터 경제 115% · 약한 나라를 언제든 노립니다' },
+];
+
 const NATION_COLORS = ['#3b82f6', '#ef4444', '#22c55e', '#f59e0b', '#a855f7', '#06b6d4', '#ec4899', '#84cc16'];
 const NATION_NAMES = ['북방연방', '남부공화국', '동해연합', '서부왕국', '중원제국', '해양동맹', '고원공화국', '삼각주연방'];
 
@@ -233,5 +243,5 @@ module.exports = {
   TERRAIN, RESOURCES, UNITS, UNIT_ORDER, COUNTER, BUILDINGS, BUILDING_ORDER, MAX_BUILDING_LEVEL,
   MATERIALS, MARKET_IMPACT, MARKET_REVERT, STOCKPILE_CAP, STOCKS, STOCK_ORDER, STOCK_SPREAD,
   TECHS, TECH_ORDER, RULES, NATION_COLORS, NATION_NAMES,
-  PROJECTS, PROJECT_ORDER, SPY_OPS,
+  PROJECTS, PROJECT_ORDER, SPY_OPS, DIFFICULTY,
 };
